@@ -1,0 +1,44 @@
+# --- Java & Maven (Compilados) ---
+target/
+*.class
+*.jar
+*.war
+*.zip
+
+
+.env
+.env.local
+.env.*.local
+src/main/resources/application-local.properties
+src/main/resources/static/config.js
+
+## Ignoramos la carpeta de imágenes si no queremos subirlas a GitHub
+src/main/resources/static/Imagenes/
+/target/classes/static/Imagenes/
+
+# --- IntelliJ IDEA ---
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# --- Eclipse ---
+.settings/
+.project
+.classpath
+bin/
+
+# --- VS Code ---
+.vscode/
+
+# --- Archivos de Sistema y Logs ---
+.DS_Store
+Thumbs.db
+*.log
+logs/
+temp/
+
+# --- Spring Boot ---
+help.md
+.mvn/wrapper/maven-wrapper.jar
