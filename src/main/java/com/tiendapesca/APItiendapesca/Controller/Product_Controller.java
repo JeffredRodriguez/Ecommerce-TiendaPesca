@@ -10,6 +10,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 /**
  * Controlador REST para la gestión de productos.
  * Proporciona endpoints para operaciones CRUD y paginación de resultados.
@@ -75,5 +77,18 @@ public class Product_Controller {
         } catch (RuntimeException e) {
             return ResponseEntity.status(404).body(e.getMessage());
         }
+    }
+
+
+    // filtra pruductos por categoría
+    @GetMapping("/category/{categoryId}")
+    public ResponseEntity<List<Product>> getProductsByCategory(@PathVariable Integer categoryId) {
+        List<Product> products = productService.listarPorCategoria(categoryId);
+
+        if (products.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+
+        return ResponseEntity.ok(products);
     }
 }

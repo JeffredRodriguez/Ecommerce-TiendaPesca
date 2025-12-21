@@ -46,4 +46,6 @@ public interface Product_Repository extends JpaRepository<Product, Integer> {
      */
     @Query(value = "SELECT * FROM product ORDER BY date DESC LIMIT :limit", nativeQuery = true)
     List<Product> findTopNProducts(@Param("limit") int limit);
+
+    List<Product> findByCategorie_Id(Integer id);
 }

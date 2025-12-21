@@ -5,6 +5,7 @@ import com.tiendapesca.APItiendapesca.Repository.Product_Repository;
 import com.tiendapesca.APItiendapesca.Events.ProductCreatedEvent;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -83,5 +84,11 @@ public class Product_Service {
             throw new RuntimeException("Producto con ID " + id + " no existe.");
         }
         productRepository.deleteById(id);
+    }
+
+
+
+    public List<Product> listarPorCategoria(Integer idCategoria) {
+        return productRepository.findByCategorie_Id(idCategoria);
     }
 }
