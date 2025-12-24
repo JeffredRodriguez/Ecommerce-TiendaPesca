@@ -3,9 +3,12 @@ package com.tiendapesca.APItiendapesca.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -33,7 +36,10 @@ import com.tiendapesca.APItiendapesca.Repository.Users_Repository;
  * Proporciona funcionalidades para crear, consultar y cancelar órdenes
  */
 @Service
+@Transactional
 public class Orders_Service {
+
+    private static final Logger logger = LoggerFactory.getLogger(Orders_Service.class);
 
     private final Orders_Repository orderRepository;
     private final OrderDetail_Repository orderDetailRepository;
@@ -44,20 +50,14 @@ public class Orders_Service {
 
     /**
      * Constructor para inyección de dependencias
-     * @param orderRepository Repositorio de órdenes
-     * @param orderDetailRepository Repositorio de detalles de órdenes
-     * @param cartService Servicio del carrito
-     * @param productRepository Repositorio de productos
-     * @param userRepository Repositorio de usuarios
-     * @param invoiceService Servicio de facturas
      */
     @Autowired
     public Orders_Service(Orders_Repository orderRepository,
-                       OrderDetail_Repository orderDetailRepository,
-                       Cart_Service cartService,
-                       Product_Repository productRepository,
-                       Users_Repository userRepository,
-                       Invoice_Service invoiceService) {
+                          OrderDetail_Repository orderDetailRepository,
+                          Cart_Service cartService,
+                          Product_Repository productRepository,
+                          Users_Repository userRepository,
+                          Invoice_Service invoiceService) {
         this.orderRepository = orderRepository;
         this.orderDetailRepository = orderDetailRepository;
         this.cartService = cartService;
@@ -74,6 +74,8 @@ public class Orders_Service {
      */
     @Transactional
     public OrderResponseDTO createOrderFromCart(Users user, OrderRequestDTO orderRequest) {
+        logger.info("Creando orden para usuario: {}", user.getEmail());
+
         // Validar usuario
         if (user == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Usuario no autenticado");
@@ -85,17 +87,20 @@ public class Orders_Service {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El carrito está vacío");
         }
 
+        logger.info("{} items en el carrito", cartItems.size());
+
         // Calcular totales
         BigDecimal subtotal = cartItems.stream()
                 .map(item -> item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Suponiendo un impuesto del 13% (como en tu esquema SQL)
         BigDecimal taxRate = new BigDecimal("0.13");
         BigDecimal tax = subtotal.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
         BigDecimal total = subtotal.add(tax).setScale(2, RoundingMode.HALF_UP);
 
-        // Crear la orden
+        logger.info("Totales calculados - Subtotal: {}, Tax: {}, Total: {}", subtotal, tax, total);
+
+        // Crear la entidad Orders
         Orders order = new Orders();
         order.setUser(user);
         order.setDate(LocalDateTime.now());
@@ -107,10 +112,9 @@ public class Orders_Service {
         order.setPaymentMethod(orderRequest.getPaymentMethod());
         order.setStatus(OrderStatus.PROCESSING);
 
-        // Guardar la orden
-        Orders savedOrder = orderRepository.save(order);
+        // Crear lista de OrderDetails antes de guardar
+        List<OrderDetail> orderDetails = new ArrayList<>();
 
-        // Crear los detalles de la orden
         for (CartItemRespoDTO cartItem : cartItems) {
             Product product = productRepository.findById(cartItem.getProductId())
                     .orElseThrow(() -> new ResponseStatusException(
@@ -123,12 +127,14 @@ public class Orders_Service {
             }
 
             // Calcular totales para el detalle
-            BigDecimal itemSubtotal = cartItem.getUnitPrice().multiply(BigDecimal.valueOf(cartItem.getQuantity()));
+            BigDecimal itemSubtotal = cartItem.getUnitPrice()
+                    .multiply(BigDecimal.valueOf(cartItem.getQuantity()));
             BigDecimal itemTax = itemSubtotal.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
             BigDecimal itemTotal = itemSubtotal.add(itemTax).setScale(2, RoundingMode.HALF_UP);
 
+            // crea OrderDetail con la relación bidireccional
             OrderDetail orderDetail = new OrderDetail();
-            orderDetail.setOrder(savedOrder);
+            orderDetail.setOrder(order);  //
             orderDetail.setProduct(product);
             orderDetail.setQuantity(cartItem.getQuantity());
             orderDetail.setUnitPrice(cartItem.getUnitPrice());
@@ -136,29 +142,74 @@ public class Orders_Service {
             orderDetail.setTax(itemTax);
             orderDetail.setTotal(itemTotal);
 
-            orderDetailRepository.save(orderDetail);
+            orderDetails.add(orderDetail);
 
             // Actualizar stock del producto
             product.setStock(product.getStock() - cartItem.getQuantity());
             productRepository.save(product);
+
+            logger.debug("Detalle creado - Producto: {}, Cantidad: {}, Subtotal: {}",
+                    product.getName(), cartItem.getQuantity(), itemSubtotal);
         }
 
-        // Generar factura automáticamente
+        // Establecer orderDetails en la orden
+        order.setOrderDetails(orderDetails);
+        logger.info("{} detalles asignados a la orden", orderDetails.size());
+
+        // Guardar la orden (CASCADE guardará los detalles)
+        logger.info("Guardando orden en base de datos...");
+        Orders savedOrder = orderRepository.save(order);
+        logger.info("Orden guardada con ID: {}", savedOrder.getId());
+
+        // Verifica que los detalles se guardaron
+        if (savedOrder.getOrderDetails() != null) {
+            logger.info("OrderDetails guardados: {}", savedOrder.getOrderDetails().size());
+        } else {
+            logger.error("ERROR: OrderDetails es NULL después de guardar!");
+        }
+
+        // Generar factura automáticamente (SIN ENVÍO DE EMAIL)
         try {
+            logger.info("Generando factura para orden ID: {}", savedOrder.getId());
             Invoice invoice = invoiceService.generateAndSaveInvoice(savedOrder.getId());
-            
-            // Opcional: enviar factura por email automáticamente
-            invoiceService.sendInvoiceByEmail(savedOrder.getId(), user.getEmail());
-        } catch (Exception e) {
-            // Loggear el error pero no fallar la orden
-            System.err.println("Error generando factura: " + e.getMessage());
+            logger.info("Factura PDF generada exitosamente. Número: {}, Archivo: {}",
+                    invoice.getInvoiceNumber(), invoice.getPdfUrl());
+
+            // EMAIL DESHABILITADO TEMPORALMENTE
+            logger.info("Factura PDF creada exitosamente. El envío por email está deshabilitado temporalmente.");
+
+        } catch (Exception invoiceError) {
+            logger.error("ERROR al generar factura: {}", invoiceError.getMessage());
+            // NO fallar la orden si la factura falla
+            logger.warn("Continuando sin factura debido a error. La orden se creó exitosamente.");
         }
 
         // Vaciar el carrito
         cartService.clearCart(user);
+        logger.info("Carrito limpiado");
+
+        // FORZAR CARGA COMPLETA ANTES DE CONVERTIR A DTO
+        Orders completeOrder = orderRepository.findByIdWithAllDetails(savedOrder.getId())
+                .orElse(savedOrder);
+
+        logger.info("Orden completada exitosamente. ID: {}, Estado: {}",
+                completeOrder.getId(), completeOrder.getStatus());
 
         // Convertir a DTO para la respuesta
-        return convertToOrderResponseDTO(savedOrder);
+        OrderResponseDTO response = convertToOrderResponseDTO(completeOrder);
+
+        //AÑADIR INFORMACIÓN DE LA FACTURA A LA RESPUESTA
+        try {
+            Invoice invoice = invoiceService.getInvoiceForOrder(completeOrder.getId());
+            response.setInvoiceNumber(invoice.getInvoiceNumber());
+            response.setInvoiceDate(invoice.getDate());
+            response.setPdfUrl(invoice.getPdfUrl());
+            logger.info("Información de factura añadida a la respuesta: {}", invoice.getInvoiceNumber());
+        } catch (Exception e) {
+            logger.warn("No se pudo añadir información de factura a la respuesta");
+        }
+
+        return response;
     }
 
     /**
@@ -166,13 +217,30 @@ public class Orders_Service {
      * @param userId ID del usuario
      * @return Lista de DTOs con las órdenes del usuario
      */
+    @Transactional(readOnly = true)
     public List<OrderResponseDTO> getUserOrders(Integer userId) {
         Users user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
 
-        List<Orders> orders = orderRepository.findByUser(user);
+
+        List<Orders> orders = orderRepository.findByUserIdWithDetails(userId);
+
+        logger.info("Obteniendo {} órdenes para usuario ID: {}", orders.size(), userId);
+
+        // Convertir a DTOs y añadir información de facturas
         return orders.stream()
-                .map(this::convertToOrderResponseDTO)
+                .map(order -> {
+                    OrderResponseDTO dto = convertToOrderResponseDTO(order);
+                    try {
+                        Invoice invoice = invoiceService.getInvoiceForOrder(order.getId());
+                        dto.setInvoiceNumber(invoice.getInvoiceNumber());
+                        dto.setInvoiceDate(invoice.getDate());
+                        dto.setPdfUrl(invoice.getPdfUrl());
+                    } catch (Exception e) {
+                        // Si no hay factura, no es un error grave
+                    }
+                    return dto;
+                })
                 .collect(Collectors.toList());
     }
 
@@ -182,37 +250,58 @@ public class Orders_Service {
      * @param user Usuario autenticado
      * @return DTO con los detalles de la orden
      */
+    @Transactional(readOnly = true)
     public OrderResponseDTO getOrderDetails(Integer orderId, Users user) {
-        Orders order = getOrderEntity(orderId);
+
+        Orders order = orderRepository.findByIdWithAllDetails(orderId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Orden no encontrada con ID: " + orderId));
 
         // Verificar que el usuario sea el dueño de la orden
         if (!order.getUser().getId().equals(user.getId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tienes permiso para ver esta orden");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "No tienes permiso para ver esta orden");
         }
 
-        return convertToOrderResponseDTO(order);
+        logger.info("Obteniendo detalles de orden ID: {} para usuario: {}",
+                orderId, user.getEmail());
+
+        OrderResponseDTO response = convertToOrderResponseDTO(order);
+
+        // Añadir información de la factura si existe
+        try {
+            Invoice invoice = invoiceService.getInvoiceForOrder(orderId);
+            response.setInvoiceNumber(invoice.getInvoiceNumber());
+            response.setInvoiceDate(invoice.getDate());
+            response.setPdfUrl(invoice.getPdfUrl());
+        } catch (Exception e) {
+            logger.debug("La orden {} no tiene factura asociada", orderId);
+        }
+
+        return response;
     }
 
     /**
-     * Obtiene la entidad Orders por ID
+     * Obtiene la entidad Orders por ID (con todas las relaciones)
      * @param orderId ID de la orden
-     * @return Entidad Orders
+     * @return Entidad Orders con todas las relaciones cargadas
      */
+    @Transactional(readOnly = true)
     public Orders getOrderEntity(Integer orderId) {
-        return orderRepository.findById(orderId)
+        return orderRepository.findByIdWithAllDetails(orderId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Orden no encontrada con ID: " + orderId));
     }
 
     /**
      * Convierte una entidad Orders a un DTO de respuesta
-     * @param order Orden a convertir
-     * @return DTO con la información de la orden
      */
     private OrderResponseDTO convertToOrderResponseDTO(Orders order) {
+        logger.debug("Convirtiendo orden ID: {} a DTO", order.getId());
+
         OrderResponseDTO responseDTO = new OrderResponseDTO();
-        
-        responseDTO.setOrderId(order.getId());  // Ahora ambos son Integer
+
+        responseDTO.setOrderId(order.getId());
         responseDTO.setOrderDate(order.getDate());
         responseDTO.setShippingAddress(order.getShippingAddress());
         responseDTO.setPhone(order.getPhone());
@@ -222,114 +311,191 @@ public class Orders_Service {
         responseDTO.setPaymentMethod(order.getPaymentMethod());
         responseDTO.setStatus(order.getStatus());
 
-        // Convertir usuario a UserDTO (sin datos sensibles)
+        // Convertir usuario a UserDTO
         UserDTO userDTO = convertToUserDTO(order.getUser());
         responseDTO.setUser(userDTO);
 
-        // Convertir detalles de la orden
-        if (order.getOrderDetails() != null) {
+        //MANEJO SEGURO DE OrderDetails
+        if (order.getOrderDetails() != null && !order.getOrderDetails().isEmpty()) {
             List<OrderDetailDTO> detailDTOs = order.getOrderDetails().stream()
                     .map(this::convertToOrderDetailDTO)
                     .collect(Collectors.toList());
             responseDTO.setOrderDetails(detailDTOs);
+            logger.debug("{} detalles convertidos a DTO", detailDTOs.size());
+        } else {
+            logger.warn("Orden ID: {} no tiene detalles o son null", order.getId());
+            responseDTO.setOrderDetails(new ArrayList<>());
         }
 
         return responseDTO;
     }
 
     /**
-     * Convierte una entidad Users a un UserDTO seguro (sin datos sensibles)
-     * @param user Usuario a convertir
-     * @return UserDTO con información segura
+     * Convierte una entidad Users a un UserDTO seguro
      */
     private UserDTO convertToUserDTO(Users user) {
+        if (user == null) {
+            return null;
+        }
+
         UserDTO userDTO = new UserDTO();
         userDTO.setId(user.getId());
         userDTO.setName(user.getName());
         userDTO.setEmail(user.getEmail());
         userDTO.setRegistrationDate(user.getRegistrationDate());
-        // NO incluir: password, authorities, username, accountNonLocked, role, etc.
         return userDTO;
     }
-    
-    
-    
+
     /**
      * Convierte una entidad OrderDetail a un DTO
-     * @param orderDetail Detalle de orden a convertir
-     * @return DTO con la información del detalle
      */
     private OrderDetailDTO convertToOrderDetailDTO(OrderDetail orderDetail) {
         OrderDetailDTO detailDTO = new OrderDetailDTO();
-        detailDTO.setProductId(orderDetail.getProduct().getId());
-        detailDTO.setProductName(orderDetail.getProduct().getName());
+
+        if (orderDetail.getProduct() != null) {
+            detailDTO.setProductId(orderDetail.getProduct().getId());
+            detailDTO.setProductName(orderDetail.getProduct().getName());
+        } else {
+            detailDTO.setProductId(0);
+            detailDTO.setProductName("Producto no disponible");
+            logger.warn("OrderDetail sin producto asociado");
+        }
+
         detailDTO.setQuantity(orderDetail.getQuantity());
         detailDTO.setUnitPrice(orderDetail.getUnitPrice());
         detailDTO.setSubtotal(orderDetail.getSubtotal());
         detailDTO.setTax(orderDetail.getTax());
         detailDTO.setTotal(orderDetail.getTotal());
+
         return detailDTO;
     }
 
     /**
      * Cancela una orden existente
-     * @param orderId ID de la orden a cancelar
-     * @param user Usuario Autenticado
      */
     @Transactional
     public void cancelOrder(Integer orderId, Users user) {
+        logger.info("Cancelando orden ID: {} para usuario: {}", orderId, user.getEmail());
+
         Orders order = getOrderEntity(orderId);
 
-        // Verificar que el usuario sea el dueño de la orden
+        // Verificar permisos
         if (!order.getUser().getId().equals(user.getId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tienes permiso para cancelar esta orden");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "No tienes permiso para cancelar esta orden");
         }
 
         // Solo se pueden cancelar órdenes en procesamiento
         if (order.getStatus() != OrderStatus.PROCESSING) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-                    "Solo se pueden cancelar órdenes en estado PROCESSING");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Solo se pueden cancelar órdenes en estado PROCESSING. Estado actual: " + order.getStatus());
         }
 
         // Devolver el stock a los productos
-        for (OrderDetail detail : order.getOrderDetails()) {
-            Product product = detail.getProduct();
-            product.setStock(product.getStock() + detail.getQuantity());
-            productRepository.save(product);
+        if (order.getOrderDetails() != null) {
+            for (OrderDetail detail : order.getOrderDetails()) {
+                Product product = detail.getProduct();
+                if (product != null) {
+                    product.setStock(product.getStock() + detail.getQuantity());
+                    productRepository.save(product);
+                    logger.debug("Stock devuelto para producto ID: {}, cantidad: {}",
+                            product.getId(), detail.getQuantity());
+                }
+            }
         }
 
         // Actualizar estado de la orden
         order.setStatus(OrderStatus.CANCELLED);
         orderRepository.save(order);
-        
-        // Opcional: Cancelar factura asociada si existe
+
+        logger.info("Orden ID: {} cancelada", orderId);
+
+        // Cancelar factura asociada si existe
         try {
             invoiceService.cancelInvoice(orderId);
+            logger.info("Factura cancelada para orden ID: {}", orderId);
         } catch (Exception e) {
-            System.err.println("Error cancelando factura: " + e.getMessage());
+            logger.warn("No se pudo cancelar la factura: {}", e.getMessage());
         }
     }
 
     /**
      * Obtiene todas las órdenes (para administradores)
-     * @return Lista de todas las órdenes
      */
+    @Transactional(readOnly = true)
     public List<OrderResponseDTO> getAllOrders() {
         List<Orders> orders = orderRepository.findAll();
+        logger.info("Obteniendo todas las órdenes. Total: {}", orders.size());
+
+        // Para cada orden, cargar detalles si es necesario
         return orders.stream()
-                .map(this::convertToOrderResponseDTO)
+                .map(order -> {
+                    // Si no tiene detalles cargados, recargar con detalles
+                    if (order.getOrderDetails() == null) {
+                        return orderRepository.findByIdWithDetails(order.getId())
+                                .orElse(order);
+                    }
+                    return order;
+                })
+                .map(order -> {
+                    OrderResponseDTO dto = convertToOrderResponseDTO(order);
+                    // Añadir información de factura si existe
+                    try {
+                        Invoice invoice = invoiceService.getInvoiceForOrder(order.getId());
+                        dto.setInvoiceNumber(invoice.getInvoiceNumber());
+                        dto.setInvoiceDate(invoice.getDate());
+                        dto.setPdfUrl(invoice.getPdfUrl());
+                    } catch (Exception e) {
+                        // No hay factura, continuar
+                    }
+                    return dto;
+                })
                 .collect(Collectors.toList());
     }
 
     /**
      * Actualiza el estado de una orden (para administradores)
-     * @param orderId ID de la orden
-     * @param status Nuevo estado
      */
     @Transactional
     public void updateOrderStatus(Integer orderId, OrderStatus status) {
+        logger.info("Actualizando estado de orden ID: {} a {}", orderId, status);
+
         Orders order = getOrderEntity(orderId);
+        OrderStatus oldStatus = order.getStatus();
         order.setStatus(status);
         orderRepository.save(order);
+
+        logger.info("Estado de orden ID: {} actualizado de {} a {}",
+                orderId, oldStatus, status);
+
+        // Si se completa la orden, generar factura si no existe
+        if (status == OrderStatus.COMPLETED && oldStatus != OrderStatus.COMPLETED) {
+            try {
+                // Verificar si ya existe factura
+                invoiceService.getInvoiceForOrder(orderId);
+                logger.info("La orden ya tiene factura asociada");
+            } catch (Exception e) {
+                // No existe factura, generarla
+                try {
+                    Invoice invoice = invoiceService.generateAndSaveInvoice(orderId);
+                    logger.info("Factura generada automáticamente: {}", invoice.getInvoiceNumber());
+                } catch (Exception invoiceError) {
+                    logger.error("Error al generar factura automática: {}", invoiceError.getMessage());
+                }
+            }
+        }
+    }
+
+    /**
+     * Método para verificar el estado de una factura
+     * @param orderId ID de la orden
+     * @return Estado de la factura
+     */
+    public String checkInvoiceStatus(Integer orderId) {
+        try {
+            return invoiceService.checkPdfStatus(orderId);
+        } catch (Exception e) {
+            return "ERROR: " + e.getMessage();
+        }
     }
 }

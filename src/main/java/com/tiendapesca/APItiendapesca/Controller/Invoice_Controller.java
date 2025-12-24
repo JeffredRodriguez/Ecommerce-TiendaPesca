@@ -17,7 +17,7 @@ import java.io.IOException;
  * Proporciona endpoints para generar, consultar y gestionar facturas
  */
 @RestController
-@RequestMapping("/api/invoices")
+@RequestMapping("/invoices")
 public class Invoice_Controller {
 
     private final Invoice_Service invoiceService;

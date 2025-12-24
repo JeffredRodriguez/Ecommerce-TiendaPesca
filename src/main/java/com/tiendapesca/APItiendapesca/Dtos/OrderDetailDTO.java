@@ -2,7 +2,7 @@ package com.tiendapesca.APItiendapesca.Dtos;
 
 import java.math.BigDecimal;
 
-//l
+
 public class OrderDetailDTO {
 	private Integer productId;
     private String productName;

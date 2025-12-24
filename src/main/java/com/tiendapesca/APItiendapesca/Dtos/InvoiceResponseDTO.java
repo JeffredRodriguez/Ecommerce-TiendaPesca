@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
-//l
+
 public class InvoiceResponseDTO {
     private String userEmail;
     private BigDecimal total;
@@ -25,7 +25,7 @@ public class InvoiceResponseDTO {
 
    
 
-	// Getters y setters
+	// Getters & setters
     public String getUserEmail() {
         return userEmail;
     }

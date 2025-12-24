@@ -11,7 +11,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -20,7 +19,7 @@ import java.util.List;
  * Proporciona endpoints para agregar, consultar, actualizar y eliminar items del carrito.
  */
 @RestController
-@RequestMapping("/api/cart")
+@RequestMapping("/cart")
 public class Cart_Controller {
 
     private final Cart_Service cartService;

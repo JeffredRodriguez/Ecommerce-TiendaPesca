@@ -18,7 +18,7 @@ import com.tiendapesca.APItiendapesca.Service.Users_Service;
  * Expone endpoints para registro y login de usuarios con generación de tokens JWT
  */
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/auth")
 public class Auth_Controller {
 
     private final Users_Service userService;

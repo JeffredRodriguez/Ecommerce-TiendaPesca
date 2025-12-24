@@ -9,11 +9,7 @@ public class ProductItemDTO {
     private BigDecimal subtotal;
     private BigDecimal tax;
     
-    
-    
-    
-    
-    
+
     public ProductItemDTO() {
 		super();
 	}

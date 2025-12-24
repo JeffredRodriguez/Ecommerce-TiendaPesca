@@ -22,58 +22,57 @@ import com.tiendapesca.APItiendapesca.Repository.Product_Repository;
 public class FeaturedProduct_Service {
 
     private static final int MAX_FEATURED_PRODUCTS = 30;
-    
+
     @Autowired
     private Product_Repository productRepository;
-    
+
     @Autowired
     private FeaturedProduct_Repository featuredProductRepository;
-    
-  
-        @Transactional
-        public void refreshFeaturedProducts() {
-            try {
-                System.out.println("🔄 Iniciando actualización de productos destacados...");
-                
-                // 1. SOLO productos de los últimos 30 días
-                LocalDateTime oneMonthAgo = LocalDateTime.now().minusDays(30);
-                Pageable pageable = PageRequest.of(0, MAX_FEATURED_PRODUCTS);
-                
-                List<Product> recentProducts = productRepository.findRecentProducts(oneMonthAgo, pageable);
-                
-                // 2. Log para debug
-                System.out.println("📦 Productos recientes encontrados: " + recentProducts.size());
-                for (Product p : recentProducts) {
-                    System.out.println("   - ID: " + p.getId() + ", Fecha: " + p.getDate() + ", Nombre: " + p.getName());
-                }
-                
-                // 3. Limpiar tabla
-                featuredProductRepository.deleteAllInBatch();
-                System.out.println("🗑️ Tabla featured_product limpiada");
-                
-                // 4. Agregar SOLO los productos recientes
-                List<FeaturedProduct> featuredProducts = new ArrayList<>();
-                LocalDate startDate = LocalDate.now();
-                LocalDate endDate = LocalDate.now().plusDays(30);
-                
-                for (Product product : recentProducts) {
-                    FeaturedProduct featured = new FeaturedProduct(product, startDate, endDate);
-                    featuredProducts.add(featured);
-                }
-                
-                // 5. Guardar
-                featuredProductRepository.saveAll(featuredProducts);
-                
-                System.out.println("🎯 Actualización completada. Productos destacados: " + featuredProducts.size());
-                
-            } catch (Exception e) {
-                System.err.println("❌ ERROR: " + e.getMessage());
-                throw new RuntimeException("Error actualizando productos destacados: " + e.getMessage(), e);
+
+
+    @Transactional
+    public void refreshFeaturedProducts() {
+        try {
+            System.out.println("Iniciando actualización de productos destacados...");
+
+            // SOLO productos de los últimos 30 días
+            LocalDateTime oneMonthAgo = LocalDateTime.now().minusDays(30);
+            Pageable pageable = PageRequest.of(0, MAX_FEATURED_PRODUCTS);
+
+            List<Product> recentProducts = productRepository.findRecentProducts(oneMonthAgo, pageable);
+
+            // Log para debug
+            System.out.println("Productos recientes encontrados: " + recentProducts.size());
+            for (Product p : recentProducts) {
+                System.out.println("   - ID: " + p.getId() + ", Fecha: " + p.getDate() + ", Nombre: " + p.getName());
             }
+
+            // Limpiar tabla
+            featuredProductRepository.deleteAllInBatch();
+            System.out.println("🗑Tabla featured_product limpiada");
+
+            // Agregar solo los productos recientes
+            List<FeaturedProduct> featuredProducts = new ArrayList<>();
+            LocalDate startDate = LocalDate.now();
+            LocalDate endDate = LocalDate.now().plusDays(30);
+
+            for (Product product : recentProducts) {
+                FeaturedProduct featured = new FeaturedProduct(product, startDate, endDate);
+                featuredProducts.add(featured);
+            }
+
+            // Guardar
+            featuredProductRepository.saveAll(featuredProducts);
+
+            System.out.println("Actualización completada. Productos destacados: " + featuredProducts.size());
+
+        } catch (Exception e) {
+            System.err.println("ERROR: " + e.getMessage());
+            throw new RuntimeException("Error actualizando productos destacados: " + e.getMessage(), e);
         }
-        
-        // ... getFeaturedProducts() igual
-    
+    }
+
+
     /**
      * Obtener productos destacados (ordenados por ID descendente)
      */
@@ -81,11 +80,11 @@ public class FeaturedProduct_Service {
         try {
             List<FeaturedProduct> featured = featuredProductRepository.findAllByOrderByIdDesc();
             List<Product> products = new ArrayList<>();
-            
+
             for (FeaturedProduct fp : featured) {
                 products.add(fp.getProduct());
             }
-            
+
             return products;
         } catch (Exception e) {
             return Collections.emptyList();

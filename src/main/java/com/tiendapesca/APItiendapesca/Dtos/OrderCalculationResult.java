@@ -3,7 +3,8 @@ import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
-//l
+
+
 public class OrderCalculationResult {
     private final BigDecimal subtotal;
     private final BigDecimal tax;
@@ -23,7 +24,7 @@ public class OrderCalculationResult {
             Collections.emptyMap();
     }
 
-    // Getters
+    // Getters & setters
     public BigDecimal getSubtotal() {
         return subtotal;
     }
@@ -77,7 +78,7 @@ public class OrderCalculationResult {
                '}';
     }
 
-    // Método de conveniencia
+
     public boolean hasProducts() {
         return !productQuantities.isEmpty();
     }

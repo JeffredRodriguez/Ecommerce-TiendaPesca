@@ -19,13 +19,15 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * Servicio para gestionar operaciones relacionadas con facturas
- * Proporciona funcionalidades para generar, cancelar, enviar y consultar facturas
+ * Servicio encargado de la gestion integral de facturas, incluyendo generacion,
+ * almacenamiento fisico de archivos PDF, persistencia en base de datos y envio por correo.
  */
 @Service
 @Transactional
@@ -50,7 +52,8 @@ public class Invoice_Service {
     }
 
     /**
-     * Genera un número único de factura
+     * Genera un identificador unico para la factura basado en el año actual y un UUID corto.
+     * * @return Cadena de texto con el formato INV-YYYY-XXXXXXXX.
      */
     public String generateInvoiceNumber() {
         return "INV-" + LocalDateTime.now().getYear() + "-"
@@ -58,339 +61,275 @@ public class Invoice_Service {
     }
 
     /**
-     * Genera y guarda una factura para una orden específica
-     * CON MEJOR MANEJO DE ERRORES PARA PDF
+     * Procesa la creacion de una factura vinculada a una orden, genera su archivo PDF
+     * Gestiona posibles duplicados mediante reintentos.
+     * * @param orderId Identificador de la orden a facturar.
+     *
+     * @return Entidad Invoice persistida con la ruta del PDF.
+     * @throws Exception Si la orden no existe, ya esta facturada o fallan los reintentos de guardado.
      */
     @Transactional
     public Invoice generateAndSaveInvoice(Integer orderId) throws Exception {
-        logger.info("🚀 INICIANDO generación de factura para orden ID: {}", orderId);
+        logger.info("Iniciando generacion de factura para orden ID: {}", orderId);
 
         Orders order = orderRepository.findById(orderId)
                 .orElseThrow(() -> {
-                    logger.error("❌ Orden no encontrada con ID: {}", orderId);
+                    logger.error("Orden no encontrada con ID: {}", orderId);
                     return new RuntimeException("Orden no encontrada con ID: " + orderId);
                 });
 
         if (invoiceRepository.existsByOrder(order)) {
-            logger.warn("⚠️ Ya existe una factura para la orden ID: {}", orderId);
+            logger.warn("Ya existe una factura para la orden ID: {}", orderId);
             throw new RuntimeException("Ya existe una factura para esta orden");
         }
 
-        // --- Lógica de Reintento para Número de Factura Único ---
         int maxRetries = 3;
-        
         for (int attempt = 0; attempt < maxRetries; attempt++) {
-            
             String invoiceNumber = generateInvoiceNumber();
-            logger.debug("🔄 Intento {}: Número de factura generado: {}", attempt + 1, invoiceNumber);
-
             Invoice invoice = new Invoice();
             invoice.setOrder(order);
             invoice.setDate(LocalDateTime.now());
             invoice.setInvoiceNumber(invoiceNumber);
-            
             try {
-                // 1. PRIMERO guardar la factura en la base de datos
-                logger.debug("💾 Guardando factura en BD...");
+                logger.debug("Guardando factura inicial en BD");
                 Invoice savedInvoice = invoiceRepository.save(invoice);
-                logger.info("✅ Factura guardada en BD con ID: {}", savedInvoice.getId());
-                
-                // 2. GENERAR PDF usando el DTO seguro
-                logger.debug("📄 Iniciando generación de PDF...");
+
+                logger.debug("Generando PDF");
                 String pdfPath = generateInvoicePdfSafely(savedInvoice);
-                
-                // 3. ACTUALIZAR factura con la URL del PDF
+
                 savedInvoice.setPdfUrl(pdfPath);
-                Invoice finalInvoice = invoiceRepository.save(savedInvoice);
-                
-                logger.info("🎉 FACTURA COMPLETADA - ID: {}, PDF: {}", finalInvoice.getId(), finalInvoice.getPdfUrl());
-                return finalInvoice;
-                
+                return invoiceRepository.save(savedInvoice);
+
             } catch (DataIntegrityViolationException e) {
-                logger.warn("⚠️ Colisión de número de factura: {}. Reintentando...", invoiceNumber);
-                
-                if (attempt == maxRetries - 1) {
-                    logger.error("❌ Fallo definitivo después de {} intentos.", maxRetries, e);
-                    throw new Exception("Fallo al generar número de factura único.", e);
-                }
-                
+                if (attempt == maxRetries - 1) throw new Exception("Fallo al generar numero de factura unico", e);
             } catch (Exception e) {
-                logger.error("❌ Error crítico al generar factura para orden ID: {}", orderId, e);
+                logger.error("Error critico: {}", e.getMessage());
                 throw new Exception("Error al generar la factura: " + e.getMessage(), e);
             }
         }
-        
-        throw new Exception("Fallo inesperado después de reintentos.");
+        throw new Exception("Fallo inesperado despues de reintentos.");
     }
 
     /**
-     * MÉTODO NUEVO: Genera el PDF de forma segura con manejo de errores
+     * Coordina la conversion de datos al formato DTO y la creacion fisica del archivo PDF.
+     * * @param invoice Entidad de la factura.
+     *
+     * @return Ruta absoluta o relativa donde se almaceno el archivo.
+     * @throws Exception Si el contenido del PDF es nulo o falla el almacenamiento.
      */
     private String generateInvoicePdfSafely(Invoice invoice) throws Exception {
         try {
-            logger.debug("🔄 Convirtiendo Invoice a DTO...");
             InvoicePdfDTO invoicePdfDTO = convertToInvoicePdfDTO(invoice);
-            
-            logger.debug("🖨️ Generando bytes del PDF...");
             byte[] pdfBytes = pdfGeneratorService.generateInvoicePdf(invoicePdfDTO);
-            
+
             if (pdfBytes == null || pdfBytes.length == 0) {
-                throw new Exception("El PDF generado está vacío o es nulo");
+                throw new Exception("El PDF generado esta vacio");
             }
-            
-            logger.debug("✅ PDF generado - Tamaño: {} bytes", pdfBytes.length);
-            
-            logger.debug("💾 Guardando PDF en almacenamiento...");
-            String pdfPath = pdfGeneratorService.savePdfToStorage(pdfBytes, invoice.getInvoiceNumber());
-            
-            if (pdfPath == null || pdfPath.trim().isEmpty()) {
-                throw new Exception("La ruta del PDF es nula o vacía");
-            }
-            
-            logger.debug("✅ PDF guardado en: {}", pdfPath);
-            return pdfPath;
-            
+
+            return pdfGeneratorService.savePdfToStorage(pdfBytes, invoice.getInvoiceNumber());
         } catch (Exception e) {
-            logger.error("❌ ERROR en generateInvoicePdfSafely: {}", e.getMessage(), e);
+            logger.error("Error en generateInvoicePdfSafely: {}", e.getMessage());
             throw new Exception("Fallo al generar el PDF: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Convierte una entidad Invoice a InvoicePdfDTO para generar PDF sin recursión
+     * Transforma una entidad Invoice y su orden asociada en un objeto de transferencia de datos (DTO)
+     * optimizado para la generacion del documento PDF.
+     * * @param invoice Entidad factura.
+     *
+     * @return Objeto InvoicePdfDTO con informacion detallada de cliente y productos.
      */
     private InvoicePdfDTO convertToInvoicePdfDTO(Invoice invoice) {
-        logger.debug("🔄 Convirtiendo Invoice a DTO - Invoice ID: {}", invoice.getId());
-        
-        try {
-            // Validaciones básicas
-            if (invoice == null) throw new IllegalArgumentException("Invoice nulo");
-            if (invoice.getOrder() == null) throw new IllegalArgumentException("Order nulo en invoice");
-            
-            Orders order = invoice.getOrder();
-            
-            // Datos del cliente con validación
-            String customerName = "Cliente";
-            String customerEmail = "No especificado";
-            if (order.getUser() != null) {
-                customerName = order.getUser().getName() != null ? order.getUser().getName() : "Cliente";
-                customerEmail = order.getUser().getEmail() != null ? order.getUser().getEmail() : "No especificado";
-            }
-            
-            // Convertir detalles del pedido
-            List<ProductItemDTO> productItems = order.getOrderDetails().stream()
-                .map(detail -> {
-                    if (detail == null || detail.getProduct() == null) {
-                        logger.warn("⚠️ OrderDetail o Product nulo encontrado");
-                        return new ProductItemDTO(
-                            "Producto no disponible",
-                            java.math.BigDecimal.ZERO,
-                            0,
-                            java.math.BigDecimal.ZERO,
-                            java.math.BigDecimal.ZERO
-                        );
-                    }
-                    return new ProductItemDTO(
-                        detail.getProduct().getName(),
-                        detail.getUnitPrice(),
-                        detail.getQuantity(),
-                        detail.getSubtotal(),
-                        detail.getTax()
-                    );
-                })
-                .collect(Collectors.toList());
+        logger.debug("Convirtiendo Invoice a DTO - ID: {}", invoice.getId());
 
-            // Construir DTO
-            InvoicePdfDTO dto = new InvoicePdfDTO(
-                invoice.getInvoiceNumber(),
-                invoice.getDate(),
-                order.getPaymentMethod().toString(),
-                customerName,
-                customerEmail,
-                order.getShippingAddress(),
-                order.getPhone(),
-                productItems,
-                order.getTotalWithoutTax(),
-                order.getTax(),
-                order.getFinalTotal()
+        try {
+            if (invoice == null || invoice.getOrder() == null) {
+                throw new IllegalArgumentException("Invoice u Orden son nulos");
+            }
+
+            Orders order = invoice.getOrder();
+
+            String customerName = "Cliente Generico";
+            String customerEmail = "Sin correo";
+            if (order.getUser() != null) {
+                customerName = order.getUser().getName() != null ? order.getUser().getName() : customerName;
+                customerEmail = order.getUser().getEmail() != null ? order.getUser().getEmail() : customerEmail;
+            }
+
+            String paymentMethod = "No especificado";
+            if (order.getPaymentMethod() != null) {
+                paymentMethod = order.getPaymentMethod().toString();
+            }
+
+            List<ProductItemDTO> productItems = Collections.emptyList();
+            if (order.getOrderDetails() != null) {
+                productItems = order.getOrderDetails().stream()
+                        .map(detail -> {
+                            String pName = (detail.getProduct() != null) ? detail.getProduct().getName() : "Producto Desconocido";
+                            return new ProductItemDTO(
+                                    pName,
+                                    detail.getUnitPrice(),
+                                    detail.getQuantity(),
+                                    detail.getSubtotal(),
+                                    detail.getTax()
+                            );
+                        })
+                        .collect(Collectors.toList());
+            } else {
+                logger.warn("OrderDetails es nulo para la orden ID: {}. Se usara lista vacia.", order.getId());
+            }
+
+            return new InvoicePdfDTO(
+                    invoice.getInvoiceNumber(),
+                    invoice.getDate(),
+                    paymentMethod,
+                    customerName,
+                    customerEmail,
+                    order.getShippingAddress(),
+                    order.getPhone(),
+                    productItems,
+                    order.getTotalWithoutTax(),
+                    order.getTax(),
+                    order.getFinalTotal()
             );
-            
-            logger.debug("✅ DTO creado exitosamente");
-            return dto;
-            
+
         } catch (Exception e) {
-            logger.error("❌ Error en convertToInvoicePdfDTO: {}", e.getMessage(), e);
-            throw new RuntimeException("Error al convertir invoice a DTO", e);
+            logger.error("Error en convertToInvoicePdfDTO: {}", e.getMessage(), e);
+            throw new RuntimeException("Error al convertir invoice a DTO: " + e.getMessage(), e);
         }
     }
 
     /**
-     * MÉTODO DE DIAGNÓSTICO: Verifica el estado del PDF
+     * Verifica la existencia del archivo fisico asociado a una factura en el sistema de archivos.
+     * * @param orderId Identificador de la orden.
+     *
+     * @return Estado descriptivo del archivo (OK, NO GENERADO, NO EXISTE).
      */
     public String checkPdfStatus(Integer orderId) {
         try {
             Invoice invoice = getInvoiceForOrder(orderId);
-            
-            if (invoice.getPdfUrl() == null) {
-                return "❌ PDF NO GENERADO - URL es nula";
-            }
-            
-            if (!Files.exists(Paths.get(invoice.getPdfUrl()))) {
-                return "❌ PDF NO ENCONTRADO - Archivo no existe en: " + invoice.getPdfUrl();
-            }
-            
-            long fileSize = Files.size(Paths.get(invoice.getPdfUrl()));
-            return String.format("✅ PDF OK - Tamaño: %d bytes, Ruta: %s", fileSize, invoice.getPdfUrl());
-            
+            if (invoice.getPdfUrl() == null) return "PDF NO GENERADO";
+            if (!Files.exists(Paths.get(invoice.getPdfUrl()))) return "ARCHIVO NO EXISTE";
+            return "PDF OK - " + Files.size(Paths.get(invoice.getPdfUrl())) + " bytes";
         } catch (Exception e) {
-            return "❌ ERROR en diagnóstico: " + e.getMessage();
+            return "ERROR: " + e.getMessage();
         }
     }
 
     /**
-     * MÉTODO NUEVO: Reintenta generar el PDF para una factura existente
+     * Regenera el archivo PDF de una factura existente, eliminando el archivo anterior si existe.
+     * * @param orderId Identificador de la orden asociada.
+     *
+     * @return Entidad Invoice actualizada con la nueva ruta.
+     * @throws Exception Si ocurre un error durante la generacion o el guardado.
      */
     @Transactional
     public Invoice retryPdfGeneration(Integer orderId) throws Exception {
-        logger.info("🔄 Reintentando generación de PDF para orden ID: {}", orderId);
-        
         Invoice invoice = getInvoiceForOrder(orderId);
-        
-        try {
-            String newPdfPath = generateInvoicePdfSafely(invoice);
-            
-            // Eliminar archivo anterior si existe
-            if (invoice.getPdfUrl() != null && Files.exists(Paths.get(invoice.getPdfUrl()))) {
-                Files.delete(Paths.get(invoice.getPdfUrl()));
+        String newPdfPath = generateInvoicePdfSafely(invoice);
+
+        if (invoice.getPdfUrl() != null) {
+            try {
+                Files.deleteIfExists(Paths.get(invoice.getPdfUrl()));
+            } catch (IOException e) {
+                logger.warn("No se pudo eliminar el archivo PDF anterior: {}", e.getMessage());
             }
-            
-            invoice.setPdfUrl(newPdfPath);
-            Invoice updatedInvoice = invoiceRepository.save(invoice);
-            
-            logger.info("✅ PDF regenerado exitosamente para factura: {}", invoice.getInvoiceNumber());
-            return updatedInvoice;
-            
-        } catch (Exception e) {
-            logger.error("❌ Error al regenerar PDF: {}", e.getMessage(), e);
-            throw new Exception("Error al regenerar PDF: " + e.getMessage(), e);
         }
+
+        invoice.setPdfUrl(newPdfPath);
+        return invoiceRepository.save(invoice);
     }
 
-    // Los demás métodos se mantienen igual...
     /**
-     * Cancela una factura existente
+     * Marca una factura como cancelada y registra la fecha de cancelacion.
+     * * @param orderId Identificador de la orden facturada.
      */
     @Transactional
     public void cancelInvoice(Integer orderId) {
-        try {
-            logger.info("Cancelando factura para orden ID: {}", orderId);
-
-            Invoice invoice = invoiceRepository.findByOrderId(orderId).orElse(null);
-
-            if (invoice != null) {
-                invoice.setIsCanceled(true);
-                invoice.setCancelationDate(LocalDateTime.now());
-                invoiceRepository.save(invoice);
-                logger.info("Factura cancelada exitosamente para orden ID: {}", orderId);
-            } else {
-                logger.warn("No se encontró factura para cancelar con orden ID: {}", orderId);
-            }
-        } catch (Exception e) {
-            logger.error("Error al cancelar factura para orden ID: {}", orderId, e);
-            throw new RuntimeException("Error al cancelar la factura", e);
+        Invoice invoice = invoiceRepository.findByOrderId(orderId).orElse(null);
+        if (invoice != null) {
+            invoice.setIsCanceled(true);
+            invoice.setCancelationDate(LocalDateTime.now());
+            invoiceRepository.save(invoice);
         }
     }
 
     /**
-     * Envía una factura por correo electrónico
+     * Recupera el archivo PDF y lo envia como adjunto por correo electronico.
+     * * @param orderId Identificador de la orden.
+     *
+     * @param emailAddress Direccion de correo destino.
+     * @throws Exception Si el archivo no es legible o falla el servicio de correo.
      */
     @Transactional
     public void sendInvoiceByEmail(Integer orderId, String emailAddress) throws Exception {
-        logger.info("Enviando factura por email para orden ID: {} a {}", orderId, emailAddress);
-
-        Invoice invoice = invoiceRepository.findByOrderId(orderId)
-                .orElseThrow(() -> {
-                    logger.error("Factura no encontrada para orden ID: {}", orderId);
-                    return new RuntimeException("Factura no encontrada");
-                });
-
-        try {
-            byte[] pdfBytes = Files.readAllBytes(Paths.get(invoice.getPdfUrl()));
-
-            emailService.sendEmailWithAttachment(
-                    emailAddress,
-                    "Factura #" + invoice.getInvoiceNumber(),
-                    "Adjunto encontrará la factura de su compra reciente.",
-                    "factura_" + invoice.getInvoiceNumber() + ".pdf",
-                    pdfBytes
-            );
-
-            logger.info("Factura enviada exitosamente a {}", emailAddress);
-        } catch (Exception e) {
-            logger.error("Error al enviar factura por email para orden ID: {}", orderId, e);
-            throw new Exception("Error al enviar la factura por email", e);
-        }
+        Invoice invoice = getInvoiceForOrder(orderId);
+        byte[] pdfBytes = Files.readAllBytes(Paths.get(invoice.getPdfUrl()));
+        emailService.sendEmailWithAttachment(
+                emailAddress,
+                "Factura #" + invoice.getInvoiceNumber(),
+                "Adjunto encontrara su factura.",
+                "factura_" + invoice.getInvoiceNumber() + ".pdf",
+                pdfBytes
+        );
     }
 
     /**
-     * Obtiene la factura asociada a una orden
+     * Busca la factura asociada a una orden especifica en la base de datos.
+     * * @param orderId Identificador de la orden.
+     *
+     * @return Entidad Invoice encontrada.
+     * @throws RuntimeException Si no se encuentra ningun registro.
      */
     public Invoice getInvoiceForOrder(Integer orderId) {
-        logger.debug("Buscando factura para orden ID: {}", orderId);
-
         return invoiceRepository.findByOrderId(orderId)
-                .orElseThrow(() -> {
-                    logger.error("Factura no encontrada para orden ID: {}", orderId);
-                    return new RuntimeException("Factura no encontrada para la orden: " + orderId);
-                });
+                .orElseThrow(() -> new RuntimeException("Factura no encontrada para orden: " + orderId));
     }
 
     /**
-     * Obtiene el archivo PDF de una factura
+     * Obtiene el contenido binario del archivo PDF de la factura.
+     * * @param orderId Identificador de la orden.
+     *
+     * @return Arreglo de bytes del archivo.
+     * @throws IOException Si ocurre un error en la lectura del archivo.
      */
     public byte[] getInvoicePdf(Integer orderId) throws IOException {
-        logger.debug("Obteniendo PDF de factura para orden ID: {}", orderId);
-
         Invoice invoice = getInvoiceForOrder(orderId);
         return Files.readAllBytes(Paths.get(invoice.getPdfUrl()));
     }
 
     /**
-     * Convierte una entidad Invoice a un DTO de respuesta
+     * Convierte la entidad factura en un DTO simplificado para respuestas de la API.
+     * * @param invoice Entidad de la factura.
+     *
+     * @return InvoiceResponseDTO con el resumen de la factura.
      */
     public InvoiceResponseDTO convertInvoiceToResponseDTO(Invoice invoice) {
         Orders order = invoice.getOrder();
 
-        List<OrderDetailDTO> detailDTOs = order.getOrderDetails().stream().map(item -> {
-            OrderDetailDTO dto = new OrderDetailDTO();
-            dto.setProductId(item.getProduct().getId());
-            dto.setProductName(item.getProduct().getName());
-            dto.setQuantity(item.getQuantity());
-            dto.setUnitPrice(item.getUnitPrice());
-            dto.setSubtotal(item.getSubtotal());
-            dto.setTax(item.getTax());
-            dto.setTotal(item.getTotal());
-            return dto;
-        }).collect(Collectors.toList());
+        List<OrderDetailDTO> details = new ArrayList<>();
+        if (order.getOrderDetails() != null) {
+            details = order.getOrderDetails().stream().map(item -> {
+                OrderDetailDTO d = new OrderDetailDTO();
+                d.setProductId(item.getProduct() != null ? item.getProduct().getId() : 0);
+                d.setProductName(item.getProduct() != null ? item.getProduct().getName() : "N/A");
+                d.setQuantity(item.getQuantity());
+                d.setUnitPrice(item.getUnitPrice());
+                d.setSubtotal(item.getSubtotal());
+                d.setTax(item.getTax());
+                d.setTotal(item.getTotal());
+                return d;
+            }).collect(Collectors.toList());
+        }
 
         return new InvoiceResponseDTO(
-            order.getUser().getEmail(),
-            order.getFinalTotal(),
-            order.getId(),
-            invoice.getInvoiceNumber(),
-            invoice.getDate(),
-            detailDTOs
+                (order.getUser() != null) ? order.getUser().getEmail() : "N/A",
+                order.getFinalTotal(),
+                order.getId(),
+                invoice.getInvoiceNumber(),
+                invoice.getDate(),
+                details
         );
-    }
-
-    /**
-     * Método alternativo para obtener el PDF usando DTO seguro
-     */
-    public byte[] generateInvoicePdfSafe(Integer orderId) throws Exception {
-        logger.debug("Generando PDF seguro para orden ID: {}", orderId);
-
-        Invoice invoice = getInvoiceForOrder(orderId);
-        InvoicePdfDTO invoicePdfDTO = convertToInvoicePdfDTO(invoice);
-        return pdfGeneratorService.generateInvoicePdf(invoicePdfDTO);
     }
 }

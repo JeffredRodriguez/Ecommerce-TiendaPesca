@@ -1,6 +1,6 @@
 package com.tiendapesca.APItiendapesca.Entities;
 
-import com.fasterxml.jackson.annotation.JsonIgnore; // ← IMPORTANTE: Agregar esta importación
+import com.fasterxml.jackson.annotation.JsonBackReference; // ← CAMBIAR DE @JsonIgnore
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 
@@ -12,10 +12,10 @@ public class OrderDetail {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    // ✅ CAMBIO CRÍTICO: Agregar @JsonIgnore para romper el bucle
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "order_id", nullable = false)
-    @JsonIgnore // ← ESTO EVITA EL BUCLE: OrderDetail -> Order -> OrderDetails -> Order...
+    @JsonBackReference(value = "order-details")
     private Orders order;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -37,13 +37,14 @@ public class OrderDetail {
     @Column(name = "total", precision = 10, scale = 2)
     private BigDecimal total;
 
-    // --- Constructores ---
+
     public OrderDetail() {}
 
-    // Constructor sin la referencia circular en parámetros
-    public OrderDetail(Product product, Integer quantity, 
-                      BigDecimal unitPrice, BigDecimal subtotal, 
-                      BigDecimal tax, BigDecimal total) {
+    // Constructor con Order (necesario para la relación bidireccional)
+    public OrderDetail(Orders order, Product product, Integer quantity,
+                       BigDecimal unitPrice, BigDecimal subtotal,
+                       BigDecimal tax, BigDecimal total) {
+        this.order = order;
         this.product = product;
         this.quantity = quantity;
         this.unitPrice = unitPrice;
@@ -117,36 +118,35 @@ public class OrderDetail {
         this.total = total;
     }
 
-    // --- Métodos utilitarios ---
-    
+
     /**
      * Método para calcular automáticamente los valores
      */
     public void calculateValues() {
         if (this.unitPrice != null && this.quantity != null) {
             this.subtotal = this.unitPrice.multiply(BigDecimal.valueOf(this.quantity));
-            
+
             // Calcular impuesto (13% por ejemplo)
             if (this.tax == null) {
                 this.tax = this.subtotal.multiply(BigDecimal.valueOf(0.13));
             }
-            
+
             this.total = this.subtotal.add(this.tax != null ? this.tax : BigDecimal.ZERO);
         }
     }
-    
+
     /**
      * Método toString seguro que evita referencias circulares
      */
     @Override
     public String toString() {
         return String.format(
-            "OrderDetail{id=%d, productId=%s, quantity=%d, unitPrice=%.2f, subtotal=%.2f}",
-            id,
-            product != null ? product.getId() : "null",
-            quantity,
-            unitPrice != null ? unitPrice : BigDecimal.ZERO,
-            subtotal != null ? subtotal : BigDecimal.ZERO
+                "OrderDetail{id=%d, productId=%s, quantity=%d, unitPrice=%.2f, subtotal=%.2f}",
+                id,
+                product != null ? product.getId() : "null",
+                quantity,
+                unitPrice != null ? unitPrice : BigDecimal.ZERO,
+                subtotal != null ? subtotal : BigDecimal.ZERO
         );
     }
 }

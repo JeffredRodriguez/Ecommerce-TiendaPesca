@@ -18,7 +18,7 @@ import java.util.List;
  * Proporciona endpoints para crear, consultar y cancelar órdenes
  */
 @RestController
-@RequestMapping("/api/orders")
+@RequestMapping("/orders")
 public class Orders_Controller {
 
     private final Orders_Service ordersService;

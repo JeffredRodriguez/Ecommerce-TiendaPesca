@@ -14,10 +14,9 @@ import java.util.List;
 
 /**
  * Controlador REST para la gestión de productos.
- * Proporciona endpoints para operaciones CRUD y paginación de resultados.
  */
 @RestController
-@RequestMapping("/api/products")
+@RequestMapping("/products")
 public class Product_Controller {
 
     @Autowired

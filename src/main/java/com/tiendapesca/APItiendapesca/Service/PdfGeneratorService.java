@@ -35,12 +35,12 @@ public class PdfGeneratorService {
     private static final BaseColor SECONDARY_COLOR = new BaseColor(220, 220, 220);
     private static final BaseColor ACCENT_COLOR = new BaseColor(255, 153, 0);
 
-    // 🔹 SIMPLIFICAMOS: Usamos fuentes estándar de iText
+    //  fuentes estándar de iText
     private static Font normalFont = new Font(Font.FontFamily.HELVETICA, 10);
     private static Font boldFont = new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD);
 
     public byte[] generateInvoicePdf(InvoicePdfDTO invoiceDto) {
-        logger.info("🔄 Iniciando generación de PDF para factura: {}", invoiceDto.getInvoiceNumber());
+        logger.info("Iniciando generación de PDF para factura: {}", invoiceDto.getInvoiceNumber());
         
         Document document = new Document(PageSize.A4, 40, 40, 60, 40);
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
@@ -51,7 +51,7 @@ public class PdfGeneratorService {
             
             document.open();
 
-            // Espacio inicial
+
             document.add(new Paragraph(" "));
             
             addInvoiceHeader(document);
@@ -64,12 +64,12 @@ public class PdfGeneratorService {
             document.close();
             
             byte[] pdfBytes = outputStream.toByteArray();
-            logger.info("✅ PDF generado exitosamente - Tamaño: {} bytes", pdfBytes.length);
+            logger.info("PDF generado exitosamente - Tamaño: {} bytes", pdfBytes.length);
             return pdfBytes;
             
         } catch (Exception e) {
-            logger.error("❌ Error crítico al generar PDF: {}", e.getMessage(), e);
-            // Cerrar document si está abierto
+            logger.error("Error crítico al generar PDF: {}", e.getMessage(), e);
+
             if (document.isOpen()) {
                 document.close();
             }
@@ -78,30 +78,29 @@ public class PdfGeneratorService {
     }
 
     public String savePdfToStorage(byte[] pdfBytes, String invoiceNumber) throws IOException {
-        logger.info("💾 Guardando PDF para factura: {}", invoiceNumber);
+        logger.info("Guardando PDF para factura: {}", invoiceNumber);
         
         try {
             Path directory = Paths.get(INVOICE_DIRECTORY);
             
             // Verificación y creación de directorio
             if (!Files.exists(directory)) {
-                logger.info("📁 Creando directorio: {}", directory.toAbsolutePath());
+                logger.info("Creando directorio: {}", directory.toAbsolutePath());
                 Files.createDirectories(directory);
             }
 
-            // Nombre de archivo seguro
+            // Nombre de archivo
             String fileName = "factura_" + invoiceNumber.replaceAll("[^a-zA-Z0-9.-]", "_") + ".pdf";
             Path filePath = directory.resolve(fileName);
             
             // Guardar archivo
             Files.write(filePath, pdfBytes);
-            
-            String absolutePath = filePath.toAbsolutePath().toString();
-            logger.info("✅ PDF guardado en: {}", absolutePath);
-            return absolutePath;
+            String relativePath = INVOICE_DIRECTORY + "\\" + fileName;
+            logger.info("PDF guardado en: {}", relativePath);
+            return relativePath;
             
         } catch (Exception e) {
-            logger.error("❌ Error al guardar PDF: {}", e.getMessage(), e);
+            logger.error("Error al guardar PDF: {}", e.getMessage(), e);
             throw new IOException("No se pudo guardar el PDF: " + e.getMessage(), e);
         }
     }
@@ -111,11 +110,10 @@ public class PdfGeneratorService {
             Font titleFont = new Font(Font.FontFamily.HELVETICA, 24, Font.BOLD, PRIMARY_COLOR);
             Paragraph title = new Paragraph("FACTURA", titleFont);
             title.setAlignment(Element.ALIGN_CENTER);
-            title.setSpacingAfter(25f);
+            title.setSpacingAfter(35f);
             document.add(title);
         } catch (Exception e) {
-            logger.warn("⚠️ Error en encabezado, continuando...");
-            // Continuar sin encabezado
+            logger.warn("Error en encabezado, continuando...");
         }
     }
 
@@ -143,7 +141,7 @@ public class PdfGeneratorService {
 
             document.add(infoTable);
         } catch (Exception e) {
-            logger.warn("⚠️ Error en información de factura, continuando...");
+            logger.warn("Error en información de factura, continuando...");
         }
     }
 
@@ -177,7 +175,7 @@ public class PdfGeneratorService {
 
             document.add(customerTable);
         } catch (Exception e) {
-            logger.warn("⚠️ Error en información del cliente, continuando...");
+            logger.warn("Error en información del cliente, continuando...");
         }
     }
 
@@ -210,7 +208,7 @@ public class PdfGeneratorService {
 
             document.add(table);
         } catch (Exception e) {
-            logger.warn("⚠️ Error en tabla de productos, continuando...");
+            logger.warn("Error en tabla de productos, continuando...");
         }
     }
 
@@ -244,7 +242,7 @@ public class PdfGeneratorService {
 
             document.add(totalsTable);
         } catch (Exception e) {
-            logger.warn("⚠️ Error en sección de totales, continuando...");
+            logger.warn("Error en sección de totales, continuando...");
         }
     }
 
@@ -264,7 +262,7 @@ public class PdfGeneratorService {
 
             document.add(terms);
         } catch (Exception e) {
-            logger.warn("⚠️ Error en términos y condiciones, continuando...");
+            logger.warn("Error en términos y condiciones, continuando...");
         }
     }
 
@@ -280,7 +278,7 @@ public class PdfGeneratorService {
             valueCell.setPadding(3f);
             table.addCell(valueCell);
         } catch (Exception e) {
-            logger.warn("⚠️ Error añadiendo fila de información: {}", label);
+            logger.warn("Error añadiendo fila de información: {}", label);
         }
     }
 
@@ -292,7 +290,7 @@ public class PdfGeneratorService {
             cell.setPadding(6f);
             table.addCell(cell);
         } catch (Exception e) {
-            logger.warn("⚠️ Error añadiendo celda de encabezado: {}", text);
+            logger.warn("Error añadiendo celda de encabezado: {}", text);
         }
     }
 
@@ -310,7 +308,7 @@ public class PdfGeneratorService {
             table.addCell(createTableCell(formatCurrency(subtotal), Element.ALIGN_RIGHT, normalFont));
             table.addCell(createTableCell(formatCurrency(tax), Element.ALIGN_RIGHT, normalFont));
         } catch (Exception e) {
-            logger.warn("⚠️ Error añadiendo fila de producto");
+            logger.warn("Error añadiendo fila de producto");
         }
     }
 
@@ -322,7 +320,7 @@ public class PdfGeneratorService {
             table.addCell(createTableCell("", Element.ALIGN_CENTER, normalFont));
             table.addCell(createTableCell("", Element.ALIGN_CENTER, normalFont));
         } catch (Exception e) {
-            logger.warn("⚠️ Error añadiendo fila vacía");
+            logger.warn("Error añadiendo fila vacía");
         }
     }
 
@@ -333,7 +331,7 @@ public class PdfGeneratorService {
             cell.setPadding(5f);
             return cell;
         } catch (Exception e) {
-            // Celda de respaldo
+
             return new PdfPCell(new Phrase(""));
         }
     }
@@ -352,7 +350,7 @@ public class PdfGeneratorService {
             valueCell.setPadding(3f);
             table.addCell(valueCell);
         } catch (Exception e) {
-            logger.warn("⚠️ Error añadiendo fila de total: {}", label);
+            logger.warn("Error añadiendo fila de total: {}", label);
         }
     }
 
@@ -368,44 +366,61 @@ public class PdfGeneratorService {
      * PageEventHandler simplificado - Sin dependencias de recursos externos
      */
     private class InvoicePageEventHandler extends PdfPageEventHelper {
-        
+
         @Override
         public void onEndPage(PdfWriter writer, Document document) {
             try {
                 PdfContentByte cb = writer.getDirectContent();
+                float top = document.top() + 40; // Posición base arriba de los márgenes
 
-                // Encabezado de empresa (sin logo)
-                ColumnText.showTextAligned(cb, Element.ALIGN_LEFT,
-                        new Phrase(COMPANY_NAME,
-                                new Font(Font.FontFamily.HELVETICA, 12, Font.BOLD, PRIMARY_COLOR)),
-                        document.left(), document.top() - 20, 0);
+                // Logo
+                try {
+                    // Ruta según tu imagen: src/main/resources/static/img/logoKraken.png
+                    String logoPath = "src/main/resources/static/img/logoKraken.png";
+                    Image logo = Image.getInstance(logoPath);
+                    logo.scaleToFit(60, 60); // Tamaño del logo
+                    logo.setAbsolutePosition(document.left(), top - 50);
+                    cb.addImage(logo);
+                } catch (Exception e) {
+                    logger.warn("No se pudo cargar el logo en la ruta especificada.");
+                }
 
-                ColumnText.showTextAligned(cb, Element.ALIGN_LEFT,
-                        new Phrase(COMPANY_ADDRESS,
-                                new Font(Font.FontFamily.HELVETICA, 8)),
-                        document.left(), document.top() - 30, 0);
+                // DATOS DE EMPRESA
+                Font companyFont = new Font(Font.FontFamily.HELVETICA, 12, Font.BOLD, PRIMARY_COLOR);
+                Font infoFont = new Font(Font.FontFamily.HELVETICA, 8);
 
-                ColumnText.showTextAligned(cb, Element.ALIGN_LEFT,
-                        new Phrase("Tel: " + COMPANY_PHONE,
-                                new Font(Font.FontFamily.HELVETICA, 8)),
-                        document.left(), document.top() - 40, 0);
+                ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT,
+                        new Phrase(COMPANY_NAME, companyFont),
+                        document.right(), top - 15, 0);
 
-                // Línea separadora
+                ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT,
+                        new Phrase(COMPANY_ADDRESS, infoFont),
+                        document.right(), top - 28, 0);
+
+                ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT,
+                        new Phrase("Tel: " + COMPANY_PHONE, infoFont),
+                        document.right(), top - 38, 0);
+
+                ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT,
+                        new Phrase(COMPANY_WEBSITE, infoFont),
+                        document.right(), top - 48, 0);
+
+                // LÍNEA SEPARADORA AZUL
                 cb.setColorStroke(PRIMARY_COLOR);
-                cb.setLineWidth(0.8f);
-                cb.moveTo(document.left(), document.top() - 50);
-                cb.lineTo(document.right(), document.top() - 50);
+                cb.setLineWidth(1.2f);
+                cb.moveTo(document.left(), top - 60);
+                cb.lineTo(document.right(), top - 60);
                 cb.stroke();
 
-                // Pie de página
+                // PIE DE PÁGINA
                 Font footerFont = new Font(Font.FontFamily.HELVETICA, 8, Font.NORMAL, BaseColor.GRAY);
                 ColumnText.showTextAligned(cb, Element.ALIGN_CENTER,
                         new Phrase(COMPANY_NAME + " - " + COMPANY_WEBSITE, footerFont),
-                        (document.right() - document.left()) / 2 + document.left(),
+                        (document.right() + document.left()) / 2,
                         document.bottom() - 20, 0);
 
             } catch (Exception e) {
-                logger.warn("⚠️ Error en encabezado/pie de página, continuando...");
+                logger.error("Error en InvoicePageEventHandler: {}", e.getMessage());
             }
         }
     }

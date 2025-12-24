@@ -3,7 +3,7 @@ package com.tiendapesca.APItiendapesca.Dtos;
 import java.math.BigDecimal;
 
 
-//l
+
 public class CartItemRespoDTO {
     private Integer cartItemId;
     private Integer productId;
@@ -28,7 +28,7 @@ public class CartItemRespoDTO {
         this.subtotal = unitPrice.multiply(BigDecimal.valueOf(quantity));
     }
 
-    // Getters
+    // Getters & Setters
     public Integer getCartItemId() { return cartItemId; }
     public Integer getProductId() { return productId; }
     public String getProductName() { return productName; }

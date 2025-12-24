@@ -13,7 +13,7 @@ public class UserDTO {
     public UserDTO() {
     }
     
-    // Constructor con parámetros (actualizado)
+    // Constructor con parámetros
     public UserDTO(Integer id, String name, String email, LocalDateTime registrationDate) {
         this.id = id;
         this.name = name;

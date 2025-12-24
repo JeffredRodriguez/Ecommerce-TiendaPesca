@@ -1,6 +1,7 @@
 package com.tiendapesca.APItiendapesca.Entities;
 
-import com.fasterxml.jackson.annotation.JsonIgnore; // ← IMPORTANTE: Agregar esta importación
+
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -44,17 +45,17 @@ public class Orders {
     @Column(name = "status", nullable = false)
     private OrderStatus status = OrderStatus.PROCESSING;
 
-    // ✅ CAMBIO CRÍTICO: Agregar @JsonIgnore para evitar bucle
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    @JsonIgnore // ← ESTO EVITA EL BUCLE INFINITO
+    //  Agregar @JsonIgnore para evitar bucle
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch =  FetchType.EAGER)
+    @JsonManagedReference
     private List<OrderDetail> orderDetails;
 
-    // Constructor vacío
+
     public Orders() {
         this.date = LocalDateTime.now();
     }
 
-    // --- Getters y Setters ---
+
     public Integer getId() {
         return id;
     }

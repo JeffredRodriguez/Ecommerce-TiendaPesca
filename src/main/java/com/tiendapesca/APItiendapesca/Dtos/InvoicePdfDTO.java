@@ -16,11 +16,7 @@ public class InvoicePdfDTO {
     private BigDecimal subtotal;
     private BigDecimal tax;
     private BigDecimal total;
-    
-    
-    
-    
-    
+
     
     public InvoicePdfDTO() {
 		super();
@@ -44,7 +40,7 @@ public class InvoicePdfDTO {
         this.total = total;
     }
     
-    // Getters y Setters
+    // Getters & Setters
     public String getInvoiceNumber() { return invoiceNumber; }
     public void setInvoiceNumber(String invoiceNumber) { this.invoiceNumber = invoiceNumber; }
     

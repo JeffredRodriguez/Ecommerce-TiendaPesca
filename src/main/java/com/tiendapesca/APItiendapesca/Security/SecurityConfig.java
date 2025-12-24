@@ -39,19 +39,14 @@ public class SecurityConfig {
                 // PERMITE ACCESO PÚBLICO A RECURSOS ESTÁTICOS
                 .requestMatchers(
                     "/Imagenes/**",
-                    "/Cañas_BaitCasting/**",
-                    "/Cañas_Spinning/**", 
-                    "/Cañas%20Spinning/**",
-                    "/static/**",
-                    "/css/**",
-                    "/js/**",
                     "/fonts/**",
                     "/images/**"
                 ).permitAll()
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/products/**").permitAll()
-                .requestMatchers("/api/cart/**").authenticated()
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/auth/**").permitAll()
+                .requestMatchers("/products/**").permitAll()
+                .requestMatchers("/cart/**").authenticated()
+                    .requestMatchers("/orders/**").authenticated()
+                .requestMatchers("/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
             .sessionManagement(session -> session

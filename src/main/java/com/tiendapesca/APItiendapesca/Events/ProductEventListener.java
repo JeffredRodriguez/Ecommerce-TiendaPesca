@@ -17,15 +17,15 @@ public class ProductEventListener {
 
     @EventListener
     @TransactionalEventListener(fallbackExecution = true)
-    @Transactional // ⬅️ AGREGAR ESTO
+    @Transactional
     public void handleProductCreated(ProductCreatedEvent event) {
-        System.out.println("🆕 EVENTO: Producto creado - " + event.getProduct().getName());
+        System.out.println("Producto creado - " + event.getProduct().getName());
         
         try {
             featuredProductService.refreshFeaturedProducts();
-            System.out.println("✅ Productos destacados actualizados automáticamente");
+            System.out.println("Productos destacados actualizados automáticamente");
         } catch (Exception e) {
-            System.err.println("❌ Error actualizando productos destacados: " + e.getMessage());
+            System.err.println("Error actualizando productos destacados: " + e.getMessage());
         }
     }
 }

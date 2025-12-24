@@ -1,4 +1,4 @@
-# --- Java & Maven (Compilados) ---
+# --- Java & Maven 
 target/
 *.class
 *.jar
