@@ -7,10 +7,10 @@ import com.tiendapesca.APItiendapesca.Dtos.ProductItemDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.core.io.ClassPathResource;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -21,10 +21,9 @@ import java.math.BigDecimal;
 public class PdfGeneratorService {
 
     private static final Logger logger = LoggerFactory.getLogger(PdfGeneratorService.class);
-
     private static final String INVOICE_DIRECTORY = "invoices";
-    
-    // RUTAS SIMPLIFICADAS - Eliminamos dependencia de recursos externos
+
+    // Datos de la Empresa
     private static final String COMPANY_NAME = "Kraken Lures";
     private static final String COMPANY_ADDRESS = "Limón, Costa Rica";
     private static final String COMPANY_PHONE = "+506 2222-5555";
@@ -32,28 +31,55 @@ public class PdfGeneratorService {
     private static final String COMPANY_WEBSITE = "www.krakenlures.com";
 
     private static final BaseColor PRIMARY_COLOR = new BaseColor(0, 51, 102);
-    private static final BaseColor SECONDARY_COLOR = new BaseColor(220, 220, 220);
-    private static final BaseColor ACCENT_COLOR = new BaseColor(255, 153, 0);
 
-    //  fuentes estándar de iText
-    private static Font normalFont = new Font(Font.FontFamily.HELVETICA, 10);
-    private static Font boldFont = new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD);
+    private BaseFont robotoBaseFont = null;
+    private BaseFont robotoBoldBaseFont = null;
+    private Font normalRobotoFont;
+    private Font boldRobotoFont;
+    private Font titleRobotoFont;
+    private Font smallRobotoFont;
+
+    public PdfGeneratorService() {
+        initializeFonts();
+    }
+
+    private void initializeFonts() {
+        try {
+            // Rutas ajustadas segun tu estructura de carpetas (image_f13107.png)
+            String regularPath = "fonts/ttf/DejaVuLGCSans-Bold.ttf";
+            String boldPath = "fonts/ttf/DejaVuLGCSans-Bold.ttf";
+
+            byte[] regularBytes = new ClassPathResource(regularPath).getInputStream().readAllBytes();
+            byte[] boldBytes = new ClassPathResource(boldPath).getInputStream().readAllBytes();
+
+            // IDENTITY_H permite que el simbolo ₡ se muestre correctamente
+            robotoBaseFont = BaseFont.createFont("Roboto-Regular.ttf", BaseFont.IDENTITY_H, BaseFont.EMBEDDED, true, regularBytes, null);
+            robotoBoldBaseFont = BaseFont.createFont("Roboto-Bold.ttf", BaseFont.IDENTITY_H, BaseFont.EMBEDDED, true, boldBytes, null);
+
+            normalRobotoFont = new Font(robotoBaseFont, 10);
+            boldRobotoFont = new Font(robotoBoldBaseFont, 10, Font.BOLD);
+            titleRobotoFont = new Font(robotoBoldBaseFont, 24, Font.BOLD, PRIMARY_COLOR);
+            smallRobotoFont = new Font(robotoBaseFont, 8);
+
+        } catch (Exception e) {
+            logger.error("Error cargando fuentes: {}", e.getMessage());
+            // Fallback
+            normalRobotoFont = new Font(Font.FontFamily.HELVETICA, 10);
+            boldRobotoFont = new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD);
+            titleRobotoFont = new Font(Font.FontFamily.HELVETICA, 24, Font.BOLD, PRIMARY_COLOR);
+        }
+    }
 
     public byte[] generateInvoicePdf(InvoicePdfDTO invoiceDto) {
-        logger.info("Iniciando generación de PDF para factura: {}", invoiceDto.getInvoiceNumber());
-        
-        Document document = new Document(PageSize.A4, 40, 40, 60, 40);
+        if (robotoBaseFont == null) initializeFonts();
+        Document document = new Document(PageSize.A4, 40, 40, 80, 40);
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        
+
         try {
             PdfWriter writer = PdfWriter.getInstance(document, outputStream);
             writer.setPageEvent(new InvoicePageEventHandler());
-            
             document.open();
 
-
-            document.add(new Paragraph(" "));
-            
             addInvoiceHeader(document);
             addInvoiceInfo(document, invoiceDto);
             addCustomerInfo(document, invoiceDto);
@@ -62,365 +88,146 @@ public class PdfGeneratorService {
             addTermsAndConditions(document);
 
             document.close();
-            
-            byte[] pdfBytes = outputStream.toByteArray();
-            logger.info("PDF generado exitosamente - Tamaño: {} bytes", pdfBytes.length);
-            return pdfBytes;
-            
+            return outputStream.toByteArray();
         } catch (Exception e) {
-            logger.error("Error crítico al generar PDF: {}", e.getMessage(), e);
-
-            if (document.isOpen()) {
-                document.close();
-            }
-            throw new RuntimeException("Error al generar PDF: " + e.getMessage(), e);
+            throw new RuntimeException("Error: " + e.getMessage());
         }
     }
 
     public String savePdfToStorage(byte[] pdfBytes, String invoiceNumber) throws IOException {
-        logger.info("Guardando PDF para factura: {}", invoiceNumber);
-        
-        try {
-            Path directory = Paths.get(INVOICE_DIRECTORY);
-            
-            // Verificación y creación de directorio
-            if (!Files.exists(directory)) {
-                logger.info("Creando directorio: {}", directory.toAbsolutePath());
-                Files.createDirectories(directory);
-            }
-
-            // Nombre de archivo
-            String fileName = "factura_" + invoiceNumber.replaceAll("[^a-zA-Z0-9.-]", "_") + ".pdf";
-            Path filePath = directory.resolve(fileName);
-            
-            // Guardar archivo
-            Files.write(filePath, pdfBytes);
-            String relativePath = INVOICE_DIRECTORY + "\\" + fileName;
-            logger.info("PDF guardado en: {}", relativePath);
-            return relativePath;
-            
-        } catch (Exception e) {
-            logger.error("Error al guardar PDF: {}", e.getMessage(), e);
-            throw new IOException("No se pudo guardar el PDF: " + e.getMessage(), e);
-        }
+        Path directory = Paths.get(INVOICE_DIRECTORY);
+        if (!Files.exists(directory)) Files.createDirectories(directory);
+        String fileName = "factura_" + invoiceNumber.replaceAll("[^a-zA-Z0-9.-]", "_") + ".pdf";
+        Path filePath = directory.resolve(fileName);
+        Files.write(filePath, pdfBytes);
+        return INVOICE_DIRECTORY + "/" + fileName;
     }
 
+    // ========== METODOS DE DIBUJO ==========
+
     private void addInvoiceHeader(Document document) throws DocumentException {
-        try {
-            Font titleFont = new Font(Font.FontFamily.HELVETICA, 24, Font.BOLD, PRIMARY_COLOR);
-            Paragraph title = new Paragraph("FACTURA", titleFont);
-            title.setAlignment(Element.ALIGN_CENTER);
-            title.setSpacingAfter(35f);
-            document.add(title);
-        } catch (Exception e) {
-            logger.warn("Error en encabezado, continuando...");
-        }
+        Paragraph title = new Paragraph("FACTURA", titleRobotoFont);
+        title.setAlignment(Element.ALIGN_CENTER);
+        title.setSpacingAfter(20f);
+        document.add(title);
     }
 
     private void addInvoiceInfo(Document document, InvoicePdfDTO invoiceDto) throws DocumentException {
-        try {
-            PdfPTable infoTable = new PdfPTable(2);
-            infoTable.setWidthPercentage(100);
-            infoTable.setSpacingAfter(15f);
-
-            Font labelFont = new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD);
-
-            addInfoRow(infoTable, "Número de Factura:", 
-                      invoiceDto.getInvoiceNumber() != null ? invoiceDto.getInvoiceNumber() : "N/A", 
-                      labelFont);
-            
-            String fecha = invoiceDto.getDate() != null ? 
-                          invoiceDto.getDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : 
-                          "N/A";
-            addInfoRow(infoTable, "Fecha de Emisión:", fecha, labelFont);
-            
-            String paymentMethod = invoiceDto.getPaymentMethod() != null ? 
-                                  invoiceDto.getPaymentMethod() + " - Contado" : 
-                                  "No especificado";
-            addInfoRow(infoTable, "Términos de Pago:", paymentMethod, labelFont);
-
-            document.add(infoTable);
-        } catch (Exception e) {
-            logger.warn("Error en información de factura, continuando...");
-        }
+        PdfPTable table = new PdfPTable(2);
+        table.setWidthPercentage(100);
+        addInfoRow(table, "Número de Factura:", invoiceDto.getInvoiceNumber());
+        addInfoRow(table, "Fecha de Emisión:", invoiceDto.getDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+        addInfoRow(table, "Términos de Pago:", invoiceDto.getPaymentMethod() + " - Contado");
+        document.add(table);
     }
 
     private void addCustomerInfo(Document document, InvoicePdfDTO invoiceDto) throws DocumentException {
-        try {
-            PdfPTable customerTable = new PdfPTable(2);
-            customerTable.setWidthPercentage(100);
-            customerTable.setSpacingAfter(20f);
-
-            PdfPCell sectionHeader = new PdfPCell(new Phrase("INFORMACIÓN DEL CLIENTE",
-                    new Font(Font.FontFamily.HELVETICA, 12, Font.BOLD, PRIMARY_COLOR)));
-            sectionHeader.setColspan(2);
-            sectionHeader.setBorder(Rectangle.NO_BORDER);
-            sectionHeader.setPaddingBottom(8f);
-            customerTable.addCell(sectionHeader);
-
-            Font labelFont = new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD);
-
-            addInfoRow(customerTable, "Nombre:", 
-                      invoiceDto.getCustomerName() != null ? invoiceDto.getCustomerName() : "No especificado", 
-                      labelFont);
-            addInfoRow(customerTable, "Email:", 
-                      invoiceDto.getCustomerEmail() != null ? invoiceDto.getCustomerEmail() : "No especificado", 
-                      labelFont);
-            addInfoRow(customerTable, "Dirección:", 
-                      invoiceDto.getShippingAddress() != null ? invoiceDto.getShippingAddress() : "No especificado", 
-                      labelFont);
-            addInfoRow(customerTable, "Teléfono:", 
-                      invoiceDto.getPhone() != null ? invoiceDto.getPhone() : "No especificado", 
-                      labelFont);
-
-            document.add(customerTable);
-        } catch (Exception e) {
-            logger.warn("Error en información del cliente, continuando...");
-        }
+        document.add(new Paragraph("\nINFORMACIÓN DEL CLIENTE", new Font(robotoBoldBaseFont, 12, Font.BOLD, PRIMARY_COLOR)));
+        PdfPTable table = new PdfPTable(2);
+        table.setWidthPercentage(100);
+        addInfoRow(table, "Nombre:", invoiceDto.getCustomerName());
+        addInfoRow(table, "Email:", invoiceDto.getCustomerEmail());
+        addInfoRow(table, "Dirección:", invoiceDto.getShippingAddress());
+        document.add(table);
     }
 
     private void addProductsTable(Document document, InvoicePdfDTO invoiceDto) throws DocumentException {
-        try {
-            PdfPTable table = new PdfPTable(5);
-            table.setWidthPercentage(100);
-            table.setSpacingBefore(15f);
-            table.setSpacingAfter(25f);
+        PdfPTable table = new PdfPTable(5);
+        table.setWidthPercentage(100);
+        table.setSpacingBefore(15f);
+        table.setWidths(new float[]{3f, 1.5f, 1f, 1.5f, 1.5f});
 
-            float[] columnWidths = {3f, 1.5f, 1f, 1.5f, 1.5f};
-            table.setWidths(columnWidths);
-
-            Font headerFont = new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD, BaseColor.WHITE);
-
-            addTableHeaderCell(table, "Producto", headerFont);
-            addTableHeaderCell(table, "Precio Unitario", headerFont);
-            addTableHeaderCell(table, "Cantidad", headerFont);
-            addTableHeaderCell(table, "Subtotal", headerFont);
-            addTableHeaderCell(table, "Impuesto", headerFont);
-
-            if (invoiceDto.getProducts() != null && !invoiceDto.getProducts().isEmpty()) {
-                for (ProductItemDTO product : invoiceDto.getProducts()) {
-                    addProductRow(table, product);
-                }
-            } else {
-                // Fila vacía si no hay productos
-                addEmptyProductRow(table);
-            }
-
-            document.add(table);
-        } catch (Exception e) {
-            logger.warn("Error en tabla de productos, continuando...");
+        String[] headers = {"Producto", "Precio Unitario", "Cantidad", "Subtotal", "Impuesto"};
+        for (String h : headers) {
+            PdfPCell cell = new PdfPCell(new Phrase(h, new Font(robotoBoldBaseFont, 10, Font.BOLD, BaseColor.WHITE)));
+            cell.setBackgroundColor(PRIMARY_COLOR);
+            cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            table.addCell(cell);
         }
+
+        for (ProductItemDTO p : invoiceDto.getProducts()) {
+            table.addCell(new PdfPCell(new Phrase(p.getName(), normalRobotoFont)));
+            table.addCell(createCurrencyCell(p.getUnitPrice()));
+            table.addCell(new PdfPCell(new Phrase(String.valueOf(p.getQuantity()), normalRobotoFont)));
+            table.addCell(createCurrencyCell(p.getSubtotal()));
+            table.addCell(createCurrencyCell(p.getTax()));
+        }
+        document.add(table);
     }
 
     private void addTotalsSection(Document document, InvoicePdfDTO invoiceDto) throws DocumentException {
-        try {
-            PdfPTable totalsTable = new PdfPTable(2);
-            totalsTable.setWidthPercentage(50);
-            totalsTable.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            totalsTable.setSpacingAfter(15f);
-
-            Font labelFont = new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD);
-            
-            BigDecimal subtotal = invoiceDto.getSubtotal() != null ? invoiceDto.getSubtotal() : BigDecimal.ZERO;
-            BigDecimal tax = invoiceDto.getTax() != null ? invoiceDto.getTax() : BigDecimal.ZERO;
-            BigDecimal total = invoiceDto.getTotal() != null ? invoiceDto.getTotal() : BigDecimal.ZERO;
-            
-            addTotalRow(totalsTable, "Subtotal:", subtotal, labelFont);
-            addTotalRow(totalsTable, "Impuesto (13%):", tax, labelFont);
-
-            // Línea divisoria
-            PdfPCell dividerCell = new PdfPCell(new Phrase(" "));
-            dividerCell.setColspan(2);
-            dividerCell.setBorder(PdfPCell.TOP);
-            dividerCell.setBorderColor(BaseColor.LIGHT_GRAY);
-            dividerCell.setPaddingTop(5f);
-            dividerCell.setPaddingBottom(5f);
-            totalsTable.addCell(dividerCell);
-
-            Font totalLabelFont = new Font(Font.FontFamily.HELVETICA, 12, Font.BOLD, PRIMARY_COLOR);
-            addTotalRow(totalsTable, "TOTAL:", total, totalLabelFont);
-
-            document.add(totalsTable);
-        } catch (Exception e) {
-            logger.warn("Error en sección de totales, continuando...");
-        }
+        PdfPTable table = new PdfPTable(2);
+        table.setWidthPercentage(40);
+        table.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        addTotalRow(table, "Subtotal:", invoiceDto.getSubtotal(), boldRobotoFont);
+        addTotalRow(table, "Impuesto (13%):", invoiceDto.getTax(), boldRobotoFont);
+        addTotalRow(table, "TOTAL:", invoiceDto.getTotal(), new Font(robotoBoldBaseFont, 12, Font.BOLD, PRIMARY_COLOR));
+        document.add(table);
     }
 
     private void addTermsAndConditions(Document document) throws DocumentException {
-        try {
-            Paragraph terms = new Paragraph();
-            terms.setSpacingBefore(25f);
-
-            terms.add(new Chunk("Términos y Condiciones:\n",
-                    new Font(Font.FontFamily.HELVETICA, 9, Font.BOLD, BaseColor.DARK_GRAY)));
-
-            terms.add(new Chunk("1. Todos los precios están en colones costarricenses.\n" +
-                            "2. Pago debido inmediatamente al recibir la factura.\n" +
-                            "3. Productos no retornables una vez abiertos.\n" +
-                            "4. Garantía limitada a 30 días contra defectos de fabricación.\n",
-                    new Font(Font.FontFamily.HELVETICA, 8, Font.NORMAL, BaseColor.DARK_GRAY)));
-
-            document.add(terms);
-        } catch (Exception e) {
-            logger.warn("Error en términos y condiciones, continuando...");
-        }
+        Paragraph terms = new Paragraph("\nTérminos y Condiciones:\n1. Precios en colones (₡).\n2. Pago inmediato.", smallRobotoFont);
+        document.add(terms);
     }
 
-    private void addInfoRow(PdfPTable table, String label, String value, Font labelFont) {
-        try {
-            PdfPCell labelCell = new PdfPCell(new Phrase(label, labelFont));
-            labelCell.setBorder(Rectangle.NO_BORDER);
-            labelCell.setPadding(3f);
-            table.addCell(labelCell);
+    // ========== AUXILIARES ==========
 
-            PdfPCell valueCell = new PdfPCell(new Phrase(value));
-            valueCell.setBorder(Rectangle.NO_BORDER);
-            valueCell.setPadding(3f);
-            table.addCell(valueCell);
-        } catch (Exception e) {
-            logger.warn("Error añadiendo fila de información: {}", label);
-        }
+    private PdfPCell createCurrencyCell(BigDecimal amount) {
+        String formatted = String.format("%,.2f", amount);
+        PdfPCell cell = new PdfPCell(new Phrase("₡ " + formatted, normalRobotoFont));
+        cell.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        return cell;
     }
 
-    private void addTableHeaderCell(PdfPTable table, String text, Font font) {
-        try {
-            PdfPCell cell = new PdfPCell(new Phrase(text, font));
-            cell.setHorizontalAlignment(Element.ALIGN_CENTER);
-            cell.setBackgroundColor(PRIMARY_COLOR);
-            cell.setPadding(6f);
-            table.addCell(cell);
-        } catch (Exception e) {
-            logger.warn("Error añadiendo celda de encabezado: {}", text);
-        }
+    private void addInfoRow(PdfPTable table, String label, String value) {
+        PdfPCell c1 = new PdfPCell(new Phrase(label, boldRobotoFont));
+        c1.setBorder(Rectangle.NO_BORDER);
+        table.addCell(c1);
+        PdfPCell c2 = new PdfPCell(new Phrase(value, normalRobotoFont));
+        c2.setBorder(Rectangle.NO_BORDER);
+        table.addCell(c2);
     }
 
-    private void addProductRow(PdfPTable table, ProductItemDTO product) {
-        try {
-            String productName = product.getName() != null ? product.getName() : "Producto";
-            BigDecimal unitPrice = product.getUnitPrice() != null ? product.getUnitPrice() : BigDecimal.ZERO;
-            Integer quantity = product.getQuantity() != null ? product.getQuantity() : 0;
-            BigDecimal subtotal = product.getSubtotal() != null ? product.getSubtotal() : BigDecimal.ZERO;
-            BigDecimal tax = product.getTax() != null ? product.getTax() : BigDecimal.ZERO;
-            
-            table.addCell(createTableCell(productName, Element.ALIGN_LEFT, normalFont));
-            table.addCell(createTableCell(formatCurrency(unitPrice), Element.ALIGN_RIGHT, normalFont));
-            table.addCell(createTableCell(String.valueOf(quantity), Element.ALIGN_CENTER, normalFont));
-            table.addCell(createTableCell(formatCurrency(subtotal), Element.ALIGN_RIGHT, normalFont));
-            table.addCell(createTableCell(formatCurrency(tax), Element.ALIGN_RIGHT, normalFont));
-        } catch (Exception e) {
-            logger.warn("Error añadiendo fila de producto");
-        }
+    private void addTotalRow(PdfPTable table, String label, BigDecimal val, Font f) {
+        PdfPCell c1 = new PdfPCell(new Phrase(label, f));
+        c1.setBorder(Rectangle.NO_BORDER);
+        c1.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        table.addCell(c1);
+        PdfPCell c2 = createCurrencyCell(val);
+        c2.setBorder(Rectangle.NO_BORDER);
+        table.addCell(c2);
     }
 
-    private void addEmptyProductRow(PdfPTable table) {
-        try {
-            table.addCell(createTableCell("No hay productos", Element.ALIGN_CENTER, normalFont));
-            table.addCell(createTableCell("", Element.ALIGN_CENTER, normalFont));
-            table.addCell(createTableCell("", Element.ALIGN_CENTER, normalFont));
-            table.addCell(createTableCell("", Element.ALIGN_CENTER, normalFont));
-            table.addCell(createTableCell("", Element.ALIGN_CENTER, normalFont));
-        } catch (Exception e) {
-            logger.warn("Error añadiendo fila vacía");
-        }
-    }
-
-    private PdfPCell createTableCell(String text, int alignment, Font font) {
-        try {
-            PdfPCell cell = new PdfPCell(new Phrase(text, font));
-            cell.setHorizontalAlignment(alignment);
-            cell.setPadding(5f);
-            return cell;
-        } catch (Exception e) {
-
-            return new PdfPCell(new Phrase(""));
-        }
-    }
-
-    private void addTotalRow(PdfPTable table, String label, BigDecimal value, Font labelFont) {
-        try {
-            PdfPCell labelCell = new PdfPCell(new Phrase(label, labelFont));
-            labelCell.setBorder(Rectangle.NO_BORDER);
-            labelCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            labelCell.setPadding(3f);
-            table.addCell(labelCell);
-
-            PdfPCell valueCell = new PdfPCell(new Phrase(formatCurrency(value)));
-            valueCell.setBorder(Rectangle.NO_BORDER);
-            valueCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            valueCell.setPadding(3f);
-            table.addCell(valueCell);
-        } catch (Exception e) {
-            logger.warn("Error añadiendo fila de total: {}", label);
-        }
-    }
-
-    private String formatCurrency(BigDecimal amount) {
-        try {
-            return String.format("₡%,.2f", amount);
-        } catch (Exception e) {
-            return "₡0.00";
-        }
-    }
-
-    /**
-     * PageEventHandler simplificado - Sin dependencias de recursos externos
-     */
+    // ========== TU CLASE DE EVENTOS INTEGRADA ==========
     private class InvoicePageEventHandler extends PdfPageEventHelper {
-
         @Override
         public void onEndPage(PdfWriter writer, Document document) {
+            PdfContentByte cb = writer.getDirectContent();
             try {
-                PdfContentByte cb = writer.getDirectContent();
-                float top = document.top() + 40; // Posición base arriba de los márgenes
+                // Logo (Usando ClassPathResource para mayor compatibilidad)
+                Image logo = Image.getInstance(new ClassPathResource("static/img/logoKraken.png").getURL());
+                logo.scaleToFit(70, 70);
+                logo.setAbsolutePosition(document.left(), document.top() + 15);
+                cb.addImage(logo);
 
-                // Logo
-                try {
-                    // Ruta según tu imagen: src/main/resources/static/img/logoKraken.png
-                    String logoPath = "src/main/resources/static/img/logoKraken.png";
-                    Image logo = Image.getInstance(logoPath);
-                    logo.scaleToFit(60, 60); // Tamaño del logo
-                    logo.setAbsolutePosition(document.left(), top - 50);
-                    cb.addImage(logo);
-                } catch (Exception e) {
-                    logger.warn("No se pudo cargar el logo en la ruta especificada.");
-                }
+                // Datos de la Empresa (Lado derecho)
+                Font companyFont = new Font(robotoBoldBaseFont, 12, Font.BOLD, PRIMARY_COLOR);
+                Font infoFont = new Font(robotoBaseFont, 8);
 
-                // DATOS DE EMPRESA
-                Font companyFont = new Font(Font.FontFamily.HELVETICA, 12, Font.BOLD, PRIMARY_COLOR);
-                Font infoFont = new Font(Font.FontFamily.HELVETICA, 8);
+                ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT, new Phrase(COMPANY_NAME, companyFont), document.right(), document.top() + 70, 0);
+                ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT, new Phrase(COMPANY_ADDRESS, infoFont), document.right(), document.top() + 58, 0);
+                ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT, new Phrase("Tel: " + COMPANY_PHONE, infoFont), document.right(), document.top() + 48, 0);
+                ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT, new Phrase(COMPANY_WEBSITE, infoFont), document.right(), document.top() + 38, 0);
 
-                ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT,
-                        new Phrase(COMPANY_NAME, companyFont),
-                        document.right(), top - 15, 0);
-
-                ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT,
-                        new Phrase(COMPANY_ADDRESS, infoFont),
-                        document.right(), top - 28, 0);
-
-                ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT,
-                        new Phrase("Tel: " + COMPANY_PHONE, infoFont),
-                        document.right(), top - 38, 0);
-
-                ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT,
-                        new Phrase(COMPANY_WEBSITE, infoFont),
-                        document.right(), top - 48, 0);
-
-                // LÍNEA SEPARADORA AZUL
+                // Línea azul
                 cb.setColorStroke(PRIMARY_COLOR);
                 cb.setLineWidth(1.2f);
-                cb.moveTo(document.left(), top - 60);
-                cb.lineTo(document.right(), top - 60);
+                cb.moveTo(document.left(), document.top() + 10);
+                cb.lineTo(document.right(), document.top() + 10);
                 cb.stroke();
 
-                // PIE DE PÁGINA
-                Font footerFont = new Font(Font.FontFamily.HELVETICA, 8, Font.NORMAL, BaseColor.GRAY);
-                ColumnText.showTextAligned(cb, Element.ALIGN_CENTER,
-                        new Phrase(COMPANY_NAME + " - " + COMPANY_WEBSITE, footerFont),
-                        (document.right() + document.left()) / 2,
-                        document.bottom() - 20, 0);
-
             } catch (Exception e) {
-                logger.error("Error en InvoicePageEventHandler: {}", e.getMessage());
+                logger.warn("No se pudo dibujar el encabezado: {}", e.getMessage());
             }
         }
     }

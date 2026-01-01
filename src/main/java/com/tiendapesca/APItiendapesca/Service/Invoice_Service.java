@@ -64,7 +64,6 @@ public class Invoice_Service {
      * Procesa la creacion de una factura vinculada a una orden, genera su archivo PDF
      * Gestiona posibles duplicados mediante reintentos.
      * * @param orderId Identificador de la orden a facturar.
-     *
      * @return Entidad Invoice persistida con la ruta del PDF.
      * @throws Exception Si la orden no existe, ya esta facturada o fallan los reintentos de guardado.
      */
@@ -90,6 +89,7 @@ public class Invoice_Service {
             invoice.setOrder(order);
             invoice.setDate(LocalDateTime.now());
             invoice.setInvoiceNumber(invoiceNumber);
+
             try {
                 logger.debug("Guardando factura inicial en BD");
                 Invoice savedInvoice = invoiceRepository.save(invoice);
@@ -113,7 +113,6 @@ public class Invoice_Service {
     /**
      * Coordina la conversion de datos al formato DTO y la creacion fisica del archivo PDF.
      * * @param invoice Entidad de la factura.
-     *
      * @return Ruta absoluta o relativa donde se almaceno el archivo.
      * @throws Exception Si el contenido del PDF es nulo o falla el almacenamiento.
      */
@@ -137,7 +136,6 @@ public class Invoice_Service {
      * Transforma una entidad Invoice y su orden asociada en un objeto de transferencia de datos (DTO)
      * optimizado para la generacion del documento PDF.
      * * @param invoice Entidad factura.
-     *
      * @return Objeto InvoicePdfDTO con informacion detallada de cliente y productos.
      */
     private InvoicePdfDTO convertToInvoicePdfDTO(Invoice invoice) {
@@ -203,7 +201,6 @@ public class Invoice_Service {
     /**
      * Verifica la existencia del archivo fisico asociado a una factura en el sistema de archivos.
      * * @param orderId Identificador de la orden.
-     *
      * @return Estado descriptivo del archivo (OK, NO GENERADO, NO EXISTE).
      */
     public String checkPdfStatus(Integer orderId) {
@@ -220,7 +217,6 @@ public class Invoice_Service {
     /**
      * Regenera el archivo PDF de una factura existente, eliminando el archivo anterior si existe.
      * * @param orderId Identificador de la orden asociada.
-     *
      * @return Entidad Invoice actualizada con la nueva ruta.
      * @throws Exception Si ocurre un error durante la generacion o el guardado.
      */
@@ -258,7 +254,6 @@ public class Invoice_Service {
     /**
      * Recupera el archivo PDF y lo envia como adjunto por correo electronico.
      * * @param orderId Identificador de la orden.
-     *
      * @param emailAddress Direccion de correo destino.
      * @throws Exception Si el archivo no es legible o falla el servicio de correo.
      */
@@ -278,7 +273,6 @@ public class Invoice_Service {
     /**
      * Busca la factura asociada a una orden especifica en la base de datos.
      * * @param orderId Identificador de la orden.
-     *
      * @return Entidad Invoice encontrada.
      * @throws RuntimeException Si no se encuentra ningun registro.
      */
@@ -290,7 +284,6 @@ public class Invoice_Service {
     /**
      * Obtiene el contenido binario del archivo PDF de la factura.
      * * @param orderId Identificador de la orden.
-     *
      * @return Arreglo de bytes del archivo.
      * @throws IOException Si ocurre un error en la lectura del archivo.
      */
@@ -302,7 +295,6 @@ public class Invoice_Service {
     /**
      * Convierte la entidad factura en un DTO simplificado para respuestas de la API.
      * * @param invoice Entidad de la factura.
-     *
      * @return InvoiceResponseDTO con el resumen de la factura.
      */
     public InvoiceResponseDTO convertInvoiceToResponseDTO(Invoice invoice) {
