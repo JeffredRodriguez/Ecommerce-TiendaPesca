@@ -1,6 +1,6 @@
 package com.tiendapesca.APItiendapesca.Security;
 
-import org.springframework.context.annotation.Primary;
+
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -18,7 +18,7 @@ import com.tiendapesca.APItiendapesca.Service.Users_Service;
  * Inyecta el Users_Service de la aplicación para acceder a los usuarios registrados
  */
 @Service
-@Primary
+
 public class CustomUserDetailsService implements UserDetailsService {
 
     private final Users_Service usersService; 
