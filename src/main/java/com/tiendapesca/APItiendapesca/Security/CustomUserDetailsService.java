@@ -18,7 +18,6 @@ import com.tiendapesca.APItiendapesca.Service.Users_Service;
  * Inyecta el Users_Service de la aplicación para acceder a los usuarios registrados
  */
 @Service
-
 public class CustomUserDetailsService implements UserDetailsService {
 
     private final Users_Service usersService; 
