@@ -86,7 +86,11 @@ public class Product_Service {
         productRepository.deleteById(id);
     }
 
+    public List<Product> obtenerNovedades() {
+        // Llamamos al método que hace el JOIN con la tabla física de novedades
+        return productRepository.findNovedadesFromTrigger();
 
+    }
 
     public List<Product> listarPorCategoria(Integer idCategoria) {
         return productRepository.findByCategorie_Id(idCategoria);

@@ -90,4 +90,15 @@ public class Product_Controller {
 
         return ResponseEntity.ok(products);
     }
+
+
+
+    @GetMapping("/novedades")
+    public ResponseEntity<List<Product>> listarNovedades() {
+        List<Product> lista = productService.obtenerNovedades();
+        if (lista.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(lista);
+    }
 }

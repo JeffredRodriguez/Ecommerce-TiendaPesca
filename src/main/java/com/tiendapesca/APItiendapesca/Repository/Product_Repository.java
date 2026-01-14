@@ -48,4 +48,10 @@ public interface Product_Repository extends JpaRepository<Product, Integer> {
     List<Product> findTopNProducts(@Param("limit") int limit);
 
     List<Product> findByCategorie_Id(Integer id);
+
+
+    @Query(value = "SELECT p.* FROM product p " +
+            "INNER JOIN new_arrivals n ON p.id = n.product_id " +
+            "ORDER BY n.added_at DESC", nativeQuery = true)
+    List<Product> findNovedadesFromTrigger();
 }
