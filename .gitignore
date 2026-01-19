@@ -12,9 +12,17 @@ target/
 src/main/resources/application-local.properties
 src/main/resources/static/config.js
 
-## Ignoramos la carpeta de imágenes si no queremos subirlas a GitHub
-src/main/resources/static/Imagenes/
-/target/classes/static/Imagenes/
+
+
+.idea/
+target/
+*.class
+.settings/
+.classpath
+
+
+
+
 
 # --- IntelliJ IDEA ---
 .idea/
